@@ -1,0 +1,34 @@
+# Grimoire book configuration for the @deckyard/geo documentation.
+
+[book]
+title = "@deckyard/geo"
+description = "Read, edit and write GPX, KML, KMZ, GeoJSON and GML geometry from Jennifer."
+language = "en"
+src = "docs"
+
+[build]
+out = "site"
+clean = true
+jobs = 0
+
+[html]
+theme = "nordic"
+mode = "auto"
+navPosition = "left"
+tocPosition = "right"
+tocDepth = 3
+sectionNumbers = true
+titleUrl = "https://deckyard.github.io/deck-geo/"
+repoUrl = "https://github.com/deckyard/deck-geo"
+repoLabel = "Source"
+editUrl = "https://github.com/deckyard/deck-geo/edit/main/docs/{path}"
+footer = 'Part of <a href="https://github.com/deckyard">Deckyard</a>, community decks for <a href="https://jennifer-lang.dev/">Jennifer</a>. Rendered with <a href="https://grimoire.jennifer-lang.dev/">Grimoire</a>.'
+
+[highlight]
+enabled = true
+
+[search]
+enabled = true
+
+[pdf]
+enabled = false
