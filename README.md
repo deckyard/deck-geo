@@ -19,7 +19,7 @@ jvc add @deckyard/geo
 Or unpack `src/` from a release archive (`deckyard-geo-<version>.tar.gz`) into
 `vendor/deckyard/geo/`.
 
-Requires Jennifer 0.25.0 or newer. The deck declares no capabilities, so it
+Requires Jennifer 0.26.0 or newer. The deck declares no capabilities, so it
 runs on `jennifer-tiny`; only `open`, `save` and their per-format siblings
 touch the disk.
 

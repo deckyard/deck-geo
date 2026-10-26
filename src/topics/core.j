@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.25.0
+# pragma-jennifer-version: >=0.26.0
 
 # geo - the shared primitives every other topic builds on.
 # Spliced into geo.j via include - not a standalone module.
@@ -86,10 +86,10 @@ func fail(message as string) {
 /**
  * The local part of an XML tag name.
  *
- * Jennifer's `xml` keeps namespace prefixes verbatim and does not resolve
- * them, so `<kml:Placemark>` and `<Placemark>` are different tags to it. KML
- * and GML in the wild are written both ways - and GML is almost always
- * prefixed - so every tag this deck matches is matched on its local part.
+ * The deck's own scanner sees tags as written, so `<kml:Placemark>` and
+ * `<Placemark>` are different tags to it. KML and GML in the wild are written
+ * both ways - and GML is almost always prefixed - so every tag this deck
+ * matches is matched on its local part, whatever namespace the prefix names.
  *
  * @param name {string} a tag name, with or without a prefix
  * @return {string} everything after the first colon, or the whole name

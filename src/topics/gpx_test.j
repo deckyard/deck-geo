@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.25.0
+# pragma-jennifer-version: >=0.26.0
 
 # geo - white-box tests for the gpx topic.
 # Spliced into geo_test.j via include - run with:
@@ -107,6 +107,18 @@ func testReadGpxIgnoresExtensions() {
         "</gpxtpx:TrackPointExtension></extensions></trkpt></trkseg></trk></gpx>";
     def doc as Document init readGpx($text);
     def p as Point init $doc.tracks[0].segments[0].points[0];
+    testing.assertEqual($p.ele, 500.0);
+}
+
+# The common Garmin shape: the extension prefix is declared on the root, so each
+# cut-out point decodes against the root's bindings on the first try.
+func testReadGpxReadsDeclaredExtensions() {
+    def text as string init "<gpx xmlns=\"http://www.topografix.com/GPX/1/1\" " +
+        "xmlns:gpxtpx=\"http://www.garmin.com/xmlschemas/TrackPointExtension/v1\">" +
+        "<trk><trkseg><trkpt lat=\"47.0\" lon=\"11.0\"><ele>500</ele><extensions>" +
+        "<gpxtpx:TrackPointExtension><gpxtpx:hr>140</gpxtpx:hr></gpxtpx:TrackPointExtension>" +
+        "</extensions></trkpt></trkseg></trk></gpx>";
+    def p as Point init readGpx($text).tracks[0].segments[0].points[0];
     testing.assertEqual($p.ele, 500.0);
 }
 

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.25.0
+# pragma-jennifer-version: >=0.26.0
 
 # geo - GPX 1.0 and 1.1, the GPS exchange format.
 # Spliced into geo.j via include - not a standalone module.
@@ -49,6 +49,8 @@ func readGpxBytes(src as bytes) {
         fail("not a GPX document: the root element is <" + $root.name + ">");
     }
     def top as list of Node init childNodes($src, $root.openEnd, $root.innerEnd);
+    # Read once: every point decodes against the root's xmlns bindings.
+    def ns as map of string to string init namespaceBindings($src, $root);
     def out as Document init document();
     $out.creator = nodeAttr($src, $root, "creator");
     $out = readGpxHeader($out, $src, $root, $top);
@@ -57,16 +59,16 @@ func readGpxBytes(src as bytes) {
     def waypoints as list of Point init [];
     for (def node in findChildren($top, "wpt")) {
         if ($node.closed) {
-            $waypoints[] = readGpxPoint($src, $node);
+            $waypoints[] = readGpxPoint($src, $node, $ns);
         }
     }
     def routes as list of Route init [];
     for (def node in findChildren($top, "rte")) {
-        $routes[] = readGpxRoute($src, $node);
+        $routes[] = readGpxRoute($src, $node, $ns);
     }
     def tracks as list of Track init [];
     for (def node in findChildren($top, "trk")) {
-        $tracks[] = readGpxTrack($src, $node);
+        $tracks[] = readGpxTrack($src, $node, $ns);
     }
     $out.waypoints = $waypoints;
     $out.routes = $routes;
@@ -102,14 +104,15 @@ func readGpxHeader(into as Document, src as bytes, root as Node, top as list of 
  *
  * @param src {bytes} the whole document
  * @param node {Node} the element
+ * @param ns {map of string to string} the root's namespace bindings (`namespaceBindings`)
  * @return {Point} the position and whatever else the element carried
  * @throws {Error} when `lat` or `lon` is missing or does not parse
  */
-func readGpxPoint(src as bytes, node as Node) {
+func readGpxPoint(src as bytes, node as Node, ns as map of string to string) {
     # The leaf, decoded: a track point is small, and one native parse of it
     # beats an interpreted walk of its children by more than an order of
     # magnitude. The scanner found the boundary; `xml` reads what is inside.
-    def element as xml.Value init decodeLeaf($src, $node);
+    def element as xml.Value init decodeLeaf($src, $node, $ns);
     def latText as string init leafAttr($element, "lat");
     def lonText as string init leafAttr($element, "lon");
     if ($latText == "" or $lonText == "") {
@@ -136,14 +139,15 @@ func readGpxPoint(src as bytes, node as Node) {
  *
  * @param src {bytes} the whole document
  * @param node {Node} the `<rte>` element
+ * @param ns {map of string to string} the root's namespace bindings (`namespaceBindings`)
  * @return {Route} the route
  */
-func readGpxRoute(src as bytes, node as Node) {
+func readGpxRoute(src as bytes, node as Node, ns as map of string to string) {
     def fields as list of Node init childNodes($src, $node.openEnd, $node.innerEnd);
     def points as list of Point init [];
     for (def rtept in findChildren($fields, "rtept")) {
         if ($rtept.closed) {
-            $points[] = readGpxPoint($src, $rtept);
+            $points[] = readGpxPoint($src, $rtept, $ns);
         }
     }
     return Route{
@@ -158,13 +162,14 @@ func readGpxRoute(src as bytes, node as Node) {
  *
  * @param src {bytes} the whole document
  * @param node {Node} the `<trk>` element
+ * @param ns {map of string to string} the root's namespace bindings (`namespaceBindings`)
  * @return {Track} the track, one `Segment` per `<trkseg>`
  */
-func readGpxTrack(src as bytes, node as Node) {
+func readGpxTrack(src as bytes, node as Node, ns as map of string to string) {
     def fields as list of Node init childNodes($src, $node.openEnd, $node.innerEnd);
     def segments as list of Segment init [];
     for (def seg in findChildren($fields, "trkseg")) {
-        $segments[] = Segment{points: readGpxSegment($src, $seg)};
+        $segments[] = Segment{points: readGpxSegment($src, $seg, $ns)};
     }
     return Track{
         name: childText($src, $fields, "name"),
@@ -184,10 +189,11 @@ func readGpxTrack(src as bytes, node as Node) {
  *
  * @param src {bytes} the whole document
  * @param seg {Node} the `<trkseg>` element
+ * @param ns {map of string to string} the root's namespace bindings (`namespaceBindings`)
  * @return {list of Point} the segment's points, in order
  * @throws {Error} when a coordinate is missing, unparseable or out of range
  */
-func readGpxSegment(src as bytes, seg as Node) {
+func readGpxSegment(src as bytes, seg as Node, ns as map of string to string) {
     def points as list of Point init [];
     def child as Node init nextChild($src, $seg.openEnd, $seg.innerEnd);
     while (isNode($child)) {
@@ -196,7 +202,7 @@ func readGpxSegment(src as bytes, seg as Node) {
         # written before it is kept. A point that *is* closed but carries a bad
         # coordinate is an error, not damage to work around.
         if (localName($child.name) == "trkpt" and $child.closed) {
-            $points[] = readGpxPoint($src, $child);
+            $points[] = readGpxPoint($src, $child, $ns);
         }
         $child = nextChild($src, $child.end, $seg.innerEnd);
     }

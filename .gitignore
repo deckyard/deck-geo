@@ -10,3 +10,4 @@ dist/
 vendor/
 .jennifer-src/
 .ci-fixtures/
+.docblocks-*/

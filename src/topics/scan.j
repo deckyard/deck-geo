@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.25.0
+# pragma-jennifer-version: >=0.26.0
 
 # geo - the element scanner the XML codecs walk a document with.
 # Spliced into geo.j via include - not a standalone module.
@@ -998,29 +998,123 @@ func childText(src as bytes, nodes as list of Node, name as string) {
  * not use it for a container: decoding a `<trk>` is decoding the whole file,
  * which is the thing this deck exists to avoid.
  *
+ * A fragment cut out of the document has lost the `xmlns` declarations above
+ * it, and `xml` rejects a prefix with no declaration in scope. `ns` puts the
+ * root's bindings back (`namespaceBindings`), which covers every real file:
+ * GPX declares its extension prefixes, `gpxtpx:` and the like, on the root. A
+ * file that uses a prefix it never declares is damage, read anyway: the
+ * fragment is decoded a second time with every prefix it uses bound to a
+ * stand-in URI. Leaves are matched on their local part, so the URI is never
+ * looked at, and well-formed files never pay for the second decode.
+ *
  * @param src {bytes} the whole document
  * @param node {Node} the element to decode
+ * @param ns {map of string to string} the root's namespace bindings, prefix to URI
  * @return {xml.Value} the element as a tree
  * @throws {Error} when the fragment is not well-formed XML
  */
-func decodeLeaf(src as bytes, node as Node) {
+func decodeLeaf(src as bytes, node as Node, ns as map of string to string) {
     def text as string init fragment($src, $node);
+    try {
+        return xml.decode($text, $ns);
+    } catch (e) { # lint-disable: L103
+        # An undeclared prefix, most likely; retried below with stand-ins.
+    }
     def tree as xml.Value init xml.element("empty");
     try {
-        $tree = xml.decode($text);
+        $tree = xml.decode($text, withStandIns($text, $ns));
     } catch (e) {
         fail("<" + $node.name + "> is not well-formed: " + $e.message);
     }
     return $tree;
 }
 
+/** Where a stand-in namespace URI for an undeclared prefix starts. */
+def const STAND_IN_NAMESPACE as string init "urn:x-deckyard-geo:undeclared:";
+
+/** A prefix in front of an element or attribute name: `<gpx:`, ` gpx:`, `/gpx:`. */
+def const PREFIX_PATTERN as string init '(?:^|[<\s/])([A-Za-z_][A-Za-z0-9._-]*):[A-Za-z_]';
+
+/**
+ * The bindings `ns` plus a stand-in URI for every other prefix `text` uses.
+ *
+ * Only the retry after a failed decode calls it, so its regex pass costs
+ * nothing on a well-formed file.
+ *
+ * @param text {string} the fragment
+ * @param ns {map of string to string} the bindings already known
+ * @return {map of string to string} `ns` with a binding for each prefix in `text`
+ */
+func withStandIns(text as string, ns as map of string to string) {
+    def out as map of string to string init $ns;
+    for (def m in regex.findAll(PREFIX_PATTERN, $text)) {
+        def prefix as string init $m.groups[0];
+        if ($prefix != "xml" and $prefix != "xmlns" and not hasKey($out, $prefix)) {
+            $out[$prefix] = STAND_IN_NAMESPACE + $prefix;
+        }
+    }
+    return $out;
+}
+
+/**
+ * Whether a map holds a key. A namespace map holds a handful of prefixes, so
+ * a walk is as cheap as a lookup and keeps the deck off another library.
+ *
+ * @param m {map of string to string} the map
+ * @param key {string} the key to look for
+ * @return {bool} true when `m` has `key`
+ */
+func hasKey(m as map of string to string, key as string) {
+    for (def k in $m) {
+        if ($k == $key) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * The namespace declarations on the root element, prefix to URI.
+ *
+ * Read once per document and handed to `decodeLeaf`, so each leaf decodes
+ * against the bindings its cut-out text no longer carries. The default
+ * namespace is under `""`. A root that does not parse on its own yields no
+ * bindings; the leaves then fall back to stand-ins.
+ *
+ * @param src {bytes} the whole document
+ * @param root {Node} the root element
+ * @return {map of string to string} the root's `xmlns` bindings
+ */
+func namespaceBindings(src as bytes, root as Node) {
+    def out as map of string to string init {};
+    def open as string init byteText($src, $root.start, $root.openEnd);
+    if (not strings.endsWith($open, "/>")) {
+        $open = $open[..len($open) - 1] + "/>";
+    }
+    def tag as xml.Value init xml.element("empty");
+    try {
+        $tag = xml.decode($open, withStandIns($open, {}));
+    } catch (e) {
+        return $out;
+    }
+    for (def name in xml.attrs($tag)) {
+        if ($name == "xmlns") {
+            $out[""] = xml.attr($tag, $name);
+        } elseif (strings.startsWith($name, "xmlns:")) {
+            $out[$name[6..]] = xml.attr($tag, $name);
+        }
+    }
+    return $out;
+}
+
 /**
  * An attribute of a decoded element, matched on its local part.
  *
- * `xml` keeps namespace prefixes verbatim, so a document written
+ * `xml.attr` reads an attribute by its name as written, so a document written
  * `<gpx:trkpt gpx:lat="...">` would not answer to `lat`. The unprefixed case is
  * tried directly - one native lookup - and the prefixed one falls back to a
- * walk of the attribute names.
+ * walk of the attribute names, which works whatever the prefix's namespace
+ * (`xml.attrNS` would need the URI, and files differ in which one they use).
  *
  * @param element {xml.Value} the decoded element
  * @param name {string} the attribute to read, matched on its local part

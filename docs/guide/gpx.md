@@ -69,9 +69,13 @@ Both spellings read:
 <gpx:gpx xmlns:gpx="..."><gpx:wpt gpx:lat="47" gpx:lon="11" /></gpx:gpx>
 ```
 
-Elements and attributes are matched on their local part, because Jennifer's
-`xml` keeps prefixes verbatim and does not resolve them to namespace URIs.
-Output is unprefixed, with a default namespace.
+Elements and attributes are matched on their local part, so the prefix a file
+chose, and the GPX version its namespace URI names, make no difference. The
+reader decodes each point on its own, cut out of the file, against the
+`xmlns` declarations on the root, which is where GPX files declare their
+extension prefixes (`gpxtpx:` and the like). A file that uses a prefix it never
+declares is read anyway, as damage rather than an error. Output is unprefixed,
+with a default namespace.
 
 ## A file cut short
 

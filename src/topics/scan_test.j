@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.25.0
+# pragma-jennifer-version: >=0.26.0
 
 # geo - white-box tests for the scan topic.
 # Spliced into geo_test.j via include - run with:
@@ -356,4 +356,32 @@ func testToUtf8RejectsWhatItCannotRead() {
     testing.assertThrows("failOnUtf16", ERROR_KIND);
     testing.assertThrows("failOnAnUnknownEncoding", ERROR_KIND);
     testing.assertThrows("failOnInvalidUtf8", ERROR_KIND);
+}
+
+# The root's xmlns declarations, prefix to URI, with the default under "".
+func testNamespaceBindingsReadsTheRoot() {
+    def src as bytes init convert.bytesFromString(
+        "<gpx xmlns=\"urn:d\" xmlns:a=\"urn:a\" version=\"1.1\"><wpt/></gpx>",
+        "utf-8");
+    def ns as map of string to string init namespaceBindings($src, rootNode($src));
+    testing.assertEqual(len($ns), 2);
+    testing.assertEqual($ns[""], "urn:d");
+    testing.assertEqual($ns["a"], "urn:a");
+    # A root with an undeclared prefix of its own still yields what it declares.
+    def damaged as bytes init convert.bytesFromString("<x:gpx xmlns:a=\"urn:a\"/>", "utf-8");
+    testing.assertEqual(namespaceBindings($damaged, rootNode($damaged))["a"], "urn:a");
+}
+
+# A leaf using a prefix nobody declared is damage, and still decodes.
+func testDecodeLeafStandsInForAnUndeclaredPrefix() {
+    def src as bytes init convert.bytesFromString(
+        "<r><p:pt lat=\"1\"><p:name>n</p:name></p:pt></r>",
+        "utf-8");
+    def leaf as Node init childNodes($src, rootNode($src).openEnd, rootNode($src).innerEnd)[0];
+    def tree as xml.Value init decodeLeaf($src, $leaf, {});
+    testing.assertEqual(leafText($tree, "name"), "n");
+    testing.assertEqual(
+        withStandIns("<p:a q:b=\"1\"/>", {"p": "urn:p"})["q"],
+        STAND_IN_NAMESPACE + "q");
+    testing.assertEqual(withStandIns("<p:a/>", {"p": "urn:p"})["p"], "urn:p");
 }
