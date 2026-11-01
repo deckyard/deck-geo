@@ -69,9 +69,8 @@ func readKmlBytes(src as bytes) {
  */
 func collectPlacemarks(into as Document, src as bytes, fields as list of Node, depth as int) {
     checkDepth($depth, "KML containers");
-    def out as Document init $into;
-    def waypoints as list of Point init $out.waypoints;
-    def tracks as list of Track init $out.tracks;
+    def waypoints as list of Point init $into.waypoints;
+    def tracks as list of Track init $into.tracks;
     for (def mark in findChildren($fields, "Placemark")) {
         def read as Document init readPlacemark($src, $mark, $depth);
         for (def p in $read.waypoints) {
@@ -81,12 +80,21 @@ func collectPlacemarks(into as Document, src as bytes, fields as list of Node, d
             $tracks[] = $t;
         }
     }
-    $out.waypoints = $waypoints;
-    $out.tracks = $tracks;
+    # A nested container fills a fresh document, which is appended here:
+    # handing it the document collected so far copied that per folder.
     for (def holder in nestedContainers($fields)) {
         def inner as list of Node init childNodes($src, $holder.openEnd, $holder.innerEnd);
-        $out = collectPlacemarks($out, $src, $inner, $depth + 1);
+        def nested as Document init collectPlacemarks(document(), $src, $inner, $depth + 1);
+        for (def p in $nested.waypoints) {
+            $waypoints[] = $p;
+        }
+        for (def t in $nested.tracks) {
+            $tracks[] = $t;
+        }
     }
+    def out as Document init $into;
+    $out.waypoints = $waypoints;
+    $out.tracks = $tracks;
     return $out;
 }
 

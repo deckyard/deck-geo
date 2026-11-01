@@ -427,8 +427,18 @@ func openTagAt(src as bytes, openProbe as bytes, from as int, limit as int) {
 func nestedClose(src as bytes, openProbe as bytes, closeProbe as bytes, from as int, limit as int) {
     def depth as int init 1;
     def at as int init $from;
+    # Only a `<` that starts this element's name can change the depth, so jump
+    # between the next open and the next close probe instead of visiting every
+    # tag in between.
+    def open as int init indexOfByte($src, $openProbe, $at, $limit);
     while ($at < $limit) {
-        def lt as int init indexOfByte($src, LT_PROBE, $at, $limit);
+        if ($open >= 0 and $open < $at) {
+            $open = indexOfByte($src, $openProbe, $at, $limit);
+        }
+        def lt as int init indexOfByte($src, $closeProbe, $at, $limit);
+        if ($lt < 0 or ($open >= 0 and $open < $lt)) {
+            $lt = $open;
+        }
         if ($lt < 0) {
             return -1;
         }
