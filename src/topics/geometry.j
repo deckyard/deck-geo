@@ -134,9 +134,13 @@ export func crossTrackDistance(p as Point, a as Point, b as Point) {
  * Drop the points of a path that do not change its shape.
  *
  * Ramer-Douglas-Peucker: the two ends are kept, and within each span the
- * point furthest from the segment joining the span's ends is kept, splitting
- * the span, when it lies more than `tolerance` metres from it. Paths of fewer
- * than three points are returned as they are.
+ * point furthest from the great-circle arc joining the span's ends is kept,
+ * splitting the span, when it lies more than `tolerance` metres from it.
+ * Paths of fewer than three points are returned as they are.
+ *
+ * Offsets are measured on the sphere (see {@link segmentOffset}), so a span of
+ * any length is judged correctly: points on one great circle are collinear
+ * however far apart the span's ends are.
  *
  * Driven by an explicit worklist rather than by recursion. The recursive
  * shape has to carry the marker list through every call, and Jennifer copies
@@ -160,6 +164,8 @@ export func simplify(points as list of Point, tolerance as float) {
     if (len($points) < 3) {
         return $points;
     }
+    def path as UnitVectors init unitVectors($points);
+    def limit as float init chordSquared($tolerance);
     def keep as list of bool init [];
     for (def i as int init 0; $i < len($points); $i = $i + 1) {
         $keep[] = false;
@@ -176,7 +182,7 @@ export func simplify(points as list of Point, tolerance as float) {
         def first as int init $firsts[$at];
         def last as int init $lasts[$at];
         $at = $at + 1;
-        def furthest as int init furthestFrom($points, $first, $last, $tolerance);
+        def furthest as int init furthestFrom($path, $first, $last, $limit);
         if ($furthest > 0) {
             $keep[$furthest] = true;
             $firsts[] = $first;
@@ -195,19 +201,70 @@ export func simplify(points as list of Point, tolerance as float) {
 }
 
 /**
- * The point of a span furthest from the line closing it, if any is far enough.
+ * A path's points as unit vectors from the Earth's centre, in parallel lists.
  *
- * @param points {list of Point} the whole path
+ * @field xs {list of float} the components through the prime meridian at the equator
+ * @field ys {list of float} the components through 90 degrees east at the equator
+ * @field zs {list of float} the components through the north pole
+ */
+def struct UnitVectors {
+    xs as list of float,
+    ys as list of float,
+    zs as list of float
+};
+
+/**
+ * Every point of a path as a unit vector, computed once per path so that the
+ * per-span loop of {@link simplify} does arithmetic only.
+ *
+ * @param points {list of Point} the path
+ * @return {UnitVectors} one vector per point, in order
+ */
+func unitVectors(points as list of Point) {
+    def xs as list of float init [];
+    def ys as list of float init [];
+    def zs as list of float init [];
+    for (def p in $points) {
+        def phi as float init toRadians($p.lat);
+        def lambda as float init toRadians($p.lon);
+        def flat as float init math.cos($phi);
+        $xs[] = $flat * math.cos($lambda);
+        $ys[] = $flat * math.sin($lambda);
+        $zs[] = math.sin($phi);
+    }
+    return UnitVectors{xs: $xs, ys: $ys, zs: $zs};
+}
+
+/**
+ * The squared chord, on the unit sphere, of an arc a distance long.
+ *
+ * Offsets are compared as squared chords, which rise with the arc from 0 to
+ * half way round the Earth, so the hot loop needs no `asin`.
+ *
+ * @param metres {float} the arc length along the surface, not negative
+ * @return {float} the squared chord, 0.0 to 4.0
+ */
+func chordSquared(metres as float) {
+    def angle as float init math.min($metres / EARTH_RADIUS, math.PI);
+    def half as float init 2.0 * math.sin($angle / 2.0);
+    return $half * $half;
+}
+
+/**
+ * The point of a span furthest from the arc closing it, if any is far enough.
+ *
+ * @param path {UnitVectors} the whole path
  * @param first {int} the index the span starts at
  * @param last {int} the index the span ends at
- * @param tolerance {float} how far the line may move, in metres
- * @return {int} the index of the furthest point, or `-1` when none is past the tolerance
+ * @param limit {float} the squared chord a point must exceed, from {@link chordSquared}
+ * @return {int} the index of the furthest point, or `-1` when none is past the limit
  */
-func furthestFrom(points as list of Point, first as int, last as int, tolerance as float) {
+func furthestFrom(path as UnitVectors, first as int, last as int, limit as float) {
+    def arc as Arc init arcOf($path, $first, $last);
     def furthest as int init -1;
-    def worst as float init $tolerance;
+    def worst as float init $limit;
     for (def i as int init $first + 1; $i < $last; $i = $i + 1) {
-        def off as float init segmentOffset($points[$i], $points[$first], $points[$last]);
+        def off as float init chordToArc($arc, $path.xs[$i], $path.ys[$i], $path.zs[$i]);
         if ($off > $worst) {
             $worst = $off;
             $furthest = $i;
@@ -217,41 +274,145 @@ func furthestFrom(points as list of Point, first as int, last as int, tolerance 
 }
 
 /**
- * How far a point lies from the segment between two others, in metres.
+ * A great-circle arc, with what measuring a point against it needs taken once.
  *
- * Projected onto a local plane - degrees of longitude scaled by the cosine of
- * the latitude, taken the short way across the antimeridian - rather than
- * solved on the sphere. Over the distances a simplification tolerance names,
- * the two agree to well under a millimetre, and the planar form costs two
- * multiplications where the spherical form costs half a dozen trigonometric
- * calls per point per span.
+ * `u = n x a` and `w = b x n`: a point's foot on the great circle lies between
+ * `a` and `b` when its dot products with both are not negative.
  *
- * Measured to the **segment**, not to the infinite line through it: a point
- * beyond either end is measured to that end. {@link crossTrackDistance} is the
- * other question: distance to the great circle, what a navigator means by
- * cross-track error.
+ * @field ax {float} the start's x
+ * @field ay {float} the start's y
+ * @field az {float} the start's z
+ * @field bx {float} the end's x
+ * @field by {float} the end's y
+ * @field bz {float} the end's z
+ * @field nx {float} the unit normal's x
+ * @field ny {float} the unit normal's y
+ * @field nz {float} the unit normal's z
+ * @field ux {float} `n x a`, x
+ * @field uy {float} `n x a`, y
+ * @field uz {float} `n x a`, z
+ * @field wx {float} `b x n`, x
+ * @field wy {float} `b x n`, y
+ * @field wz {float} `b x n`, z
+ * @field degenerate {bool} whether the ends coincide (or are antipodal), so no circle is defined
+ */
+def struct Arc {
+    ax as float,
+    ay as float,
+    az as float,
+    bx as float,
+    by as float,
+    bz as float,
+    nx as float,
+    ny as float,
+    nz as float,
+    ux as float,
+    uy as float,
+    uz as float,
+    wx as float,
+    wy as float,
+    wz as float,
+    degenerate as bool
+};
+
+/**
+ * The arc between two vectors of a path.
+ *
+ * @param path {UnitVectors} the path
+ * @param first {int} the index of the arc's start
+ * @param last {int} the index of the arc's end
+ * @return {Arc} the arc
+ */
+func arcOf(path as UnitVectors, first as int, last as int) {
+    def ax as float init $path.xs[$first];
+    def ay as float init $path.ys[$first];
+    def az as float init $path.zs[$first];
+    def bx as float init $path.xs[$last];
+    def by as float init $path.ys[$last];
+    def bz as float init $path.zs[$last];
+    def nx as float init $ay * $bz - $az * $by;
+    def ny as float init $az * $bx - $ax * $bz;
+    def nz as float init $ax * $by - $ay * $bx;
+    def size as float init math.sqrt($nx * $nx + $ny * $ny + $nz * $nz);
+    if ($size > 0.0) {
+        $nx = $nx / $size;
+        $ny = $ny / $size;
+        $nz = $nz / $size;
+    }
+    return Arc{
+        ax: $ax,
+        ay: $ay,
+        az: $az,
+        bx: $bx,
+        by: $by,
+        bz: $bz,
+        nx: $nx,
+        ny: $ny,
+        nz: $nz,
+        ux: $ny * $az - $nz * $ay,
+        uy: $nz * $ax - $nx * $az,
+        uz: $nx * $ay - $ny * $ax,
+        wx: $by * $nz - $bz * $ny,
+        wy: $bz * $nx - $bx * $nz,
+        wz: $bx * $ny - $by * $nx,
+        degenerate: $size == 0.0
+    };
+}
+
+/**
+ * The squared chord, on the unit sphere, from a vector to an arc.
+ *
+ * When the point's foot on the great circle lies on the arc, with `s = p . n`
+ * the sine of its angle off the circle, the squared chord is
+ * `2 s^2 / (1 + sqrt(1 - s^2))` (the cancellation-free form of `2 - 2 cos`).
+ * Otherwise it is the squared chord to the nearer end; for a degenerate arc,
+ * to its start.
+ *
+ * @param arc {Arc} the arc
+ * @param px {float} the point's x
+ * @param py {float} the point's y
+ * @param pz {float} the point's z
+ * @return {float} the squared chord, 0.0 to 4.0
+ */
+func chordToArc(arc as Arc, px as float, py as float, pz as float) {
+    if (not $arc.degenerate and $px * $arc.ux + $py * $arc.uy + $pz * $arc.uz >= 0.0 and
+        $px * $arc.wx + $py * $arc.wy + $pz * $arc.wz >= 0.0) {
+        def s as float init math.min(1.0, math.abs($px * $arc.nx + $py * $arc.ny + $pz * $arc.nz));
+        return 2.0 * $s * $s / (1.0 + math.sqrt(1.0 - $s * $s));
+    }
+    def dx as float init $px - $arc.ax;
+    def dy as float init $py - $arc.ay;
+    def dz as float init $pz - $arc.az;
+    def toA as float init $dx * $dx + $dy * $dy + $dz * $dz;
+    if ($arc.degenerate) {
+        return $toA;
+    }
+    $dx = $px - $arc.bx;
+    $dy = $py - $arc.by;
+    $dz = $pz - $arc.bz;
+    return math.min($toA, $dx * $dx + $dy * $dy + $dz * $dz);
+}
+
+/**
+ * How far a point lies from the great-circle arc between two others, in
+ * metres.
+ *
+ * Measured to the **arc**, not to the whole great circle: a point whose foot
+ * on the circle falls outside the arc is measured to the nearer end. Solved on
+ * the sphere through unit vectors, so it holds for an arc of any length.
+ * {@link crossTrackDistance} is the other question: distance to the great
+ * circle, what a navigator means by cross-track error. {@link simplify}
+ * applies the same measure, as squared chords, through {@link furthestFrom}.
  *
  * @param p {Point} the point to measure
- * @param a {Point} one end of the segment
- * @param b {Point} the other end of the segment
+ * @param a {Point} one end of the arc
+ * @param b {Point} the other end of the arc
  * @return {float} the distance in metres
  */
 func segmentOffset(p as Point, a as Point, b as Point) {
-    def scale as float init math.cos(toRadians($a.lat));
-    def metresPerDegree as float init math.PI * EARTH_RADIUS / 180.0;
-    def px as float init longitudeDelta($a.lon, $p.lon) * $scale;
-    def py as float init $p.lat - $a.lat;
-    def bx as float init longitudeDelta($a.lon, $b.lon) * $scale;
-    def by as float init $b.lat - $a.lat;
-    def square as float init $bx * $bx + $by * $by;
-    if ($square == 0.0) {
-        return math.hypot($px, $py) * $metresPerDegree;
-    }
-    def along as float init ($px * $bx + $py * $by) / $square;
-    def clamped as float init math.max(0.0, math.min(1.0, $along));
-    def dx as float init $px - $clamped * $bx;
-    def dy as float init $py - $clamped * $by;
-    return math.hypot($dx, $dy) * $metresPerDegree;
+    def path as UnitVectors init unitVectors([$a, $p, $b]);
+    def chord as float init chordToArc(arcOf($path, 0, 2), $path.xs[1], $path.ys[1], $path.zs[1]);
+    return 2.0 * math.asin(clampUnit(math.sqrt($chord) / 2.0)) * EARTH_RADIUS;
 }
 
 /**
@@ -307,17 +468,29 @@ func crossesRay(p as Point, a as Point, b as Point) {
 }
 
 /**
+ * The most points {@link resample} returns.
+ *
+ * The output's size is set by the caller's spacing, not by the input: a 100 km
+ * track at 1 mm spacing asks for 100 million points. A path whose length over
+ * `spacing` reaches this is refused before any point is built.
+ */
+export def const MAX_RESAMPLE_POINTS as int init 1000000;
+
+/**
  * Resample a path to a fixed spacing.
  *
- * Emits a point every `spacing` metres along the path, interpolated along the
- * leg it falls on, plus the original first and last points. Interpolated
- * points carry coordinates, and an elevation when both ends of their leg had
- * one; no time and no name. A path of fewer than two points is returned as is.
+ * Emits a point every `spacing` metres along the path, measured from the
+ * first point, interpolated along the leg it falls on, plus the original
+ * first and last points. A sample that lands exactly on an inner vertex is
+ * emitted there. Interpolated points carry coordinates, and an elevation when
+ * both ends of their leg had one; no time and no name. A path of fewer than
+ * two points is returned as is.
  *
  * @param points {list of Point} the path to resample, in order
  * @param spacing {float} how far apart the results should be, in metres
  * @return {list of Point} the resampled path
- * @throws {Error} when the spacing is not positive
+ * @throws {Error} when the spacing is not positive, or when the path's length
+ *   divided by `spacing` reaches {@link MAX_RESAMPLE_POINTS} - 1
  */
 export func resample(points as list of Point, spacing as float) {
     if ($spacing <= 0.0) {
@@ -326,33 +499,38 @@ export func resample(points as list of Point, spacing as float) {
     if (len($points) < 2) {
         return $points;
     }
-    def out as list of Point init [$points[0]];
-    def carried as float init 0.0;
+    def legs as list of float init [];
+    def total as float init 0.0;
     for (def i as int init 1; $i < len($points); $i = $i + 1) {
         def leg as float init distance($points[$i - 1], $points[$i]);
-        def walked as float init $spacing - $carried;
-        while ($walked < $leg) {
-            $out[] = interpolate($points[$i - 1], $points[$i], $walked / $leg);
-            $walked = $walked + $spacing;
-        }
-        $carried = legRemainder($carried, $leg, $spacing);
+        $legs[] = $leg;
+        $total = $total + $leg;
     }
-    $out[] = $points[len($points) - 1];
+    # divided, not multiplied: spacing * MAX could overflow, which raises
+    if ($total / convert.toFloat(MAX_RESAMPLE_POINTS - 1) >= $spacing) {
+        fail("resample spacing " + convert.toString($spacing) + " m over a " +
+            convert.toString(math.round($total)) + " m path exceeds MAX_RESAMPLE_POINTS (" +
+            convert.toString(MAX_RESAMPLE_POINTS) + ")");
+    }
+    def out as list of Point init [$points[0]];
+    def last as int init len($points) - 1;
+    # how far past the current leg's start the next sample lies
+    def ahead as float init $spacing;
+    for (def i as int init 1; $i <= $last; $i = $i + 1) {
+        def leg as float init $legs[$i - 1];
+        def at as float init $ahead;
+        # each sample is offset + k * spacing, not a running sum: a sum stops
+        # advancing once spacing falls below the rounding step of the total
+        def k as int init 0;
+        while ($at < $leg or ($at == $leg and $i < $last)) {
+            $out[] = interpolate($points[$i - 1], $points[$i], $at / $leg);
+            $k = $k + 1;
+            $at = $ahead + convert.toFloat($k) * $spacing;
+        }
+        $ahead = $at - $leg;
+    }
+    $out[] = $points[$last];
     return $out;
-}
-
-/**
- * How far past the last emitted point a leg ends.
- *
- * @param carried {float} what was left over from the leg before
- * @param leg {float} how long this leg is, in metres
- * @param spacing {float} the sampling interval, in metres
- * @return {float} the leftover to carry into the next leg
- */
-func legRemainder(carried as float, leg as float, spacing as float) {
-    def total as float init $carried + $leg;
-    def whole as float init convert.toFloat(math.floor($total / $spacing));
-    return $total - $whole * $spacing;
 }
 
 /**

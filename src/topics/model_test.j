@@ -145,3 +145,24 @@ func testWithElevationRejectsAnUnboundedHeight() {
     testing.assertThrows("failOnAnUnboundedElevation", ERROR_KIND);
     testing.assertEqual(withElevation(point(0.0, 0.0), -11000.0).ele, -11000.0);
 }
+
+func testPointCountMatchesDocumentPoints() {
+    def doc as Document init document();
+    testing.assertEqual(pointCount($doc), 0);
+    $doc.waypoints = [point(1.0, 1.0)];
+    $doc.routes = [route("r", [point(0.0, 0.0), point(0.0, 1.0)])];
+    $doc.tracks = [
+        Track{
+            name: "t",
+            desc: "",
+            kind: "",
+            segments: [
+                Segment{points: [point(2.0, 2.0)]},
+                Segment{points: [point(3.0, 3.0), point(4.0, 4.0)]}
+            ]
+        }
+    ];
+    # 1 waypoint + 2 route points + 1 + 2 track points
+    testing.assertEqual(pointCount($doc), 6);
+    testing.assertEqual(pointCount($doc), len(documentPoints($doc)));
+}

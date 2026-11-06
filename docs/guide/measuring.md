@@ -101,7 +101,9 @@ prints both totals over the same track.
 `MOVING_SPEED` is 0.5 m/s, about 1.8 km/h: slower than walking, faster than a
 stationary fix drifts. A timed leg slower than that does not count towards
 `movingSeconds`, and `averageSpeed` is `distance` over moving time, not over
-elapsed time. `maxSpeed` is the fastest timed leg, in m/s.
+elapsed time. `maxSpeed` is the fastest timed leg, in m/s. When the last
+stamp precedes the first there is no usable span: `hasTime` is false and every
+timing field, `maxSpeed` included, is zero.
 
 `movingSeconds` never exceeds `totalSeconds`, even when timestamps run
 backwards (a recorder whose clock stepped, or two files concatenated); a leg
@@ -110,7 +112,8 @@ and the totals rounded to the second, so a logger writing several fixes per
 second is measured correctly. A timestamp with no zone is read as UTC.
 
 `secondsBetween(from, to2)` is the same parsing on its own: the difference in
-whole seconds (rounded), or -1 when either stamp does not parse.
+whole seconds (rounded), negative when `to2` is earlier. A stamp that does not
+parse raises `kind` `"geo"`; no integer is free to mean "unparseable".
 
 ## Simplification
 
@@ -119,14 +122,16 @@ def thin as list of geo.Point init geo.simplify($points, 10.0);
 ```
 
 Ramer-Douglas-Peucker. The two ends are kept; within each span, the point
-furthest from the straight segment joining the span's ends is kept if it lies
+furthest from the great-circle arc joining the span's ends is kept if it lies
 more than `tolerance` metres from it, and the span is split there. Kept points
 come back whole, with elevation, time and name. Paths of fewer than three
 points are returned unchanged; a negative tolerance raises.
 
-The offset is computed on a local plane (longitude scaled by the cosine of
-latitude, taken the short way across the antimeridian), which agrees with the
-spherical answer to well under a millimetre at tolerance distances.
+The offset is solved on the sphere: each point becomes a unit vector once,
+and a point is measured to the arc (to the great circle where its foot lies
+between the ends, otherwise to the nearer end). It holds for a span of any
+length, so points on one great circle are dropped however far apart the
+span's ends lie.
 
 A smooth recorded track thins hard: a 20,000-point hour-long ride comes back
 as 61 points at 10 m and draws the same at map scale.
@@ -151,10 +156,15 @@ along the leg it falls on, plus the original first and last points:
 def even as list of geo.Point init geo.resample($points, 100.0);
 ```
 
-Use it for an elevation profile, where the uneven spacing of GPS samples
-distorts the chart. Interpolated points carry coordinates, and an elevation
-when both ends of their leg had one; they have no time and no name. A spacing
-that is not positive raises.
+Samples are measured from the first point; one that lands exactly on a
+vertex is emitted there. Use it for an elevation profile, where the uneven
+spacing of GPS samples distorts the chart. Interpolated points carry
+coordinates, and an elevation when both ends of their leg had one; they have
+no time and no name. A spacing that is not positive raises.
+
+The caller's spacing, not the input, sets the output's size, so it is capped:
+when the path's length over `spacing` reaches `MAX_RESAMPLE_POINTS`
+(1,000,000), `resample` raises `kind` `"geo"` before building a point.
 
 `interpolate(a, b, fraction)` is the step on its own. It works in degrees,
 which over one leg of a track is indistinguishable from the great circle, and

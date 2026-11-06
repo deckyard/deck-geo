@@ -129,6 +129,24 @@ func testStatsNeverReportsMoreMovingTimeThanElapsed() {
     testing.assertTrue($s.movingSeconds <= $s.totalSeconds);
 }
 
+func testStatsReportsNoSpeedWhenTheSpanRunsBackwards() {
+    # the second leg runs an hour backwards, so the last stamp precedes the first:
+    # no usable span, hasTime false, and every timing field zero - the first
+    # leg's 1,112 m in 60 s (18.5 m/s) included
+    def back as list of Point init [
+        withTime(point(0.0, 0.00), "2024-01-01T10:00:00Z"),
+        withTime(point(0.0, 0.01), "2024-01-01T10:01:00Z"),
+        withTime(point(0.0, 0.02), "2024-01-01T09:00:00Z")
+    ];
+    def s as TrackStats init statsOf($back);
+    testing.assertFalse($s.hasTime);
+    testing.assertEqual($s.totalSeconds, 0);
+    testing.assertEqual($s.movingSeconds, 0);
+    testing.assertEqual($s.averageSpeed, 0.0);
+    testing.assertEqual($s.maxSpeed, 0.0);
+    testing.assertTrue($s.distance > 0.0);
+}
+
 func failOnNegativeThreshold() {
     statsWith([], -1.0, 0.5);
 }
@@ -149,10 +167,19 @@ func testSecondsBetweenAcceptsAnOffsetAndFractions() {
     testing.assertEqual(secondsBetween("2026-09-30T06:00:00.500Z", "2026-09-30T06:00:01.500Z"), 1);
 }
 
-func testSecondsBetweenReportsMinusOneForWhatDoesNotParse() {
-    testing.assertEqual(secondsBetween("not a time", "2026-09-30T06:00:00Z"), -1);
-    testing.assertEqual(secondsBetween("2026-09-30T06:00:00Z", ""), -1);
-    testing.assertEqual(secondsBetween("", ""), -1);
+func failOnUnparseableFrom() {
+    secondsBetween("not a time", "2026-09-30T06:00:00Z");
+}
+
+func failOnEmptyTo() {
+    secondsBetween("2026-09-30T06:00:00Z", "");
+}
+
+func testSecondsBetweenRaisesForWhatDoesNotParse() {
+    testing.assertThrows("failOnUnparseableFrom", ERROR_KIND);
+    testing.assertThrows("failOnEmptyTo", ERROR_KIND);
+    # -1 is a real answer, one second backwards, not a sentinel
+    testing.assertEqual(secondsBetween("2026-09-30T06:00:01Z", "2026-09-30T06:00:00Z"), -1);
 }
 
 func testInstantOf() {

@@ -60,7 +60,8 @@ export def struct TrackStats {
  * The list is one continuous path: on `trackPoints` of a multi-segment track,
  * `distance` includes the gaps between segments. With no elevations the
  * elevation fields are zero and `hasElevation` false; with fewer than two
- * parseable times the timing fields are zero and `hasTime` false.
+ * parseable times, or a last stamp earlier than the first, the timing fields
+ * (`maxSpeed` included) are zero and `hasTime` false.
  *
  * @param points {list of Point} the path, in order
  * @return {TrackStats} what it adds up to
@@ -210,6 +211,8 @@ func measureLegs(into as TrackStats, points as list of Point, movingSpeed as flo
     }
     def span as int init spanMillis($instants);
     if ($span < 0) {
+        # no usable span: every timing field stays zero, the fastest leg too
+        $out.maxSpeed = 0.0;
         return $out;
     }
     # Timestamps that run backwards - a recorder whose clock stepped, or two
@@ -256,18 +259,23 @@ func spanMillis(instants as list of Instant) {
 /**
  * How many seconds there are between two RFC 3339 timestamps.
  *
- * A stamp that does not parse yields `-1` rather than raising. A stamp with no
- * zone is read as UTC. The difference is rounded to the nearest second.
+ * A stamp with no zone is read as UTC. The difference is rounded to the
+ * nearest second and is negative when `to2` precedes `from`, so no result is
+ * free to mean "unparseable": a stamp that does not parse raises.
  *
  * @param from {string} the earlier instant
  * @param to2 {string} the later instant
- * @return {int} the difference in seconds, or `-1` when either does not parse
+ * @return {int} the difference in seconds, negative when `to2` is earlier
+ * @throws {Error} when either stamp does not parse
  */
 export func secondsBetween(from as string, to2 as string) {
     def a as Instant init instantOf($from);
     def b as Instant init instantOf($to2);
-    if (not $a.valid or not $b.valid) {
-        return -1;
+    if (not $a.valid) {
+        fail("secondsBetween: " + quoted($from) + " is not an RFC 3339 timestamp");
+    }
+    if (not $b.valid) {
+        fail("secondsBetween: " + quoted($to2) + " is not an RFC 3339 timestamp");
     }
     return math.round(convert.toFloat($b.millis - $a.millis) / 1000.0);
 }

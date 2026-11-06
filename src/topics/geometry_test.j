@@ -112,7 +112,7 @@ func testSegmentOffsetMeasuresToTheSegmentNotTheLine() {
     def b as Point init point(0.0, 1.0);
     # a point well past b: to the segment that is the distance to b itself
     def beyond as Point init point(0.0, 2.0);
-    testing.assertTrue(math.abs(segmentOffset($beyond, $a, $b) - distance($b, $beyond)) < 50.0);
+    testing.assertTrue(math.abs(segmentOffset($beyond, $a, $b) - distance($b, $beyond)) < 0.001);
     # whereas the great circle through a and b runs straight through it
     testing.assertTrue(crossTrackDistance($beyond, $a, $b) < 1.0);
 }
@@ -120,7 +120,38 @@ func testSegmentOffsetMeasuresToTheSegmentNotTheLine() {
 func testSegmentOffsetOfADegeneratePair() {
     def a as Point init point(0.0, 0.0);
     def p as Point init point(0.0, 1.0);
-    testing.assertTrue(math.abs(segmentOffset($p, $a, $a) - distance($a, $p)) < 50.0);
+    testing.assertTrue(math.abs(segmentOffset($p, $a, $a) - distance($a, $p)) < 0.001);
+}
+
+func testSegmentOffsetBesideTheArcIsTheCrossTrackDistance() {
+    # the foot of (1, 0.5) on the equator lies between the ends, so the offset
+    # is the distance to the great circle itself
+    def p as Point init point(1.0, 0.5);
+    def a as Point init point(0.0, 0.0);
+    def b as Point init point(0.0, 1.0);
+    testing.assertTrue(math.abs(segmentOffset($p, $a, $b) - crossTrackDistance($p, $a, $b)) < 0.001);
+}
+
+func testSimplifyMeasuresALongSpanOnTheSphere() {
+    # (60, 1) against the arc (0, 0) - (60, 0) along the prime meridian: its foot
+    # lies just past (60, 0), so the offset is the haversine distance to it,
+    # 2 R asin(cos 60 * sin 0.5 deg) = 2 * 6371008.8 * asin(0.5 * 0.0087265) = 55,597 m.
+    # A plane scaled by cos(0) at the span's start made it a full degree, 111 km.
+    def path as list of Point init [point(0.0, 0.0), point(60.0, 1.0), point(60.0, 0.0)];
+    testing.assertEqual(len(simplify($path, 60000.0)), 2);
+    testing.assertEqual(len(simplify($path, 55000.0)), 3);
+}
+
+func testSimplifyDropsPointsOnOneLongGreatCircle() {
+    # destination() at one initial bearing from one start walks a single great
+    # circle, so every point lies on the arc from the first to the last; at 60 N
+    # it bends away from the parallel by kilometres over 500 km
+    def start as Point init point(60.0, 0.0);
+    def path as list of Point init [$start];
+    for (def i as int init 1; $i <= 10; $i = $i + 1) {
+        $path[] = destination($start, 90.0, convert.toFloat($i) * 50000.0);
+    }
+    testing.assertEqual(len(simplify($path, 1.0)), 2);
 }
 
 func testSimplifyKeepsTheEnds() {
@@ -187,9 +218,18 @@ func testSimplifyRejectsANegativeTolerance() {
 
 func testFurthestFromFindsTheOutlier() {
     def path as list of Point init [point(0.0, 0.0), point(0.5, 0.5), point(0.0, 1.0)];
-    testing.assertEqual(furthestFrom($path, 0, 2, 10.0), 1);
+    def vectors as UnitVectors init unitVectors($path);
+    testing.assertEqual(furthestFrom($vectors, 0, 2, chordSquared(10.0)), 1);
     # with a tolerance wider than the deviation, nothing is far enough
-    testing.assertEqual(furthestFrom($path, 0, 2, 100000.0), -1);
+    testing.assertEqual(furthestFrom($vectors, 0, 2, chordSquared(100000.0)), -1);
+}
+
+func testChordSquaredOfAnArc() {
+    testing.assertEqual(chordSquared(0.0), 0.0);
+    # a quarter of the way round: chord sqrt(2), squared 2
+    testing.assertTrue(math.abs(chordSquared(EARTH_RADIUS * math.PI / 2.0) - 2.0) < 1e-12);
+    # half way round or more: the diameter, squared 4
+    testing.assertTrue(math.abs(chordSquared(EARTH_RADIUS * 4.0) - 4.0) < 1e-12);
 }
 
 func testPointInPolygonInsideAndOutside() {
@@ -257,6 +297,42 @@ func testResampleStaysOnALegAcrossTheAntimeridian() {
     }
 }
 
+func testResampleEmitsASampleThatLandsOnAVertex() {
+    # three equal legs on the equator, resampled at exactly one leg: the samples
+    # are the inner vertices themselves, and the end is not doubled
+    def path as list of Point init [
+        point(0.0, 0.0),
+        point(0.0, 0.001),
+        point(0.0, 0.002),
+        point(0.0, 0.003)
+    ];
+    def leg as float init distance($path[0], $path[1]);
+    testing.assertEqual(distance($path[1], $path[2]), $leg);
+    def even as list of Point init resample($path, $leg);
+    testing.assertEqual(len($even), 4);
+    for (def i as int init 0; $i < 4; $i = $i + 1) {
+        testing.assertTrue(math.abs($even[$i].lon - $path[$i].lon) < 1e-12);
+    }
+}
+
+func failOnResamplingIntoTooManyPoints() {
+    # 1,112 m at 1 mm is 1.1 million points
+    resample([point(0.0, 0.0), point(0.0, 0.01)], 0.001);
+}
+
+func failOnASpacingBelowTheRoundingStep() {
+    # 1e-300 m: before the cap, a running sum never advanced past the first sample
+    resample([point(0.0, 0.0), point(0.0, 1.0)], 1e-300);
+}
+
+func testResampleRefusesMoreThanMaxResamplePoints() {
+    testing.assertThrows("failOnResamplingIntoTooManyPoints", ERROR_KIND);
+    testing.assertThrows("failOnASpacingBelowTheRoundingStep", ERROR_KIND);
+    testing.assertEqual(MAX_RESAMPLE_POINTS, 1000000);
+    # a degree on the equator, 111,195 m, at 1 km: samples at 1..111 km plus both ends
+    testing.assertEqual(len(resample([point(0.0, 0.0), point(0.0, 1.0)], 1000.0)), 113);
+}
+
 func testResamplePassesShortPathsThrough() {
     testing.assertEqual(len(resample([], 100.0)), 0);
     testing.assertEqual(len(resample([point(0.0, 0.0)], 100.0)), 1);
@@ -309,6 +385,14 @@ func testInterpolateWrapsLongitudeRatherThanRaising() {
     testing.assertTrue($over.lon >= -180.0);
     testing.assertTrue($over.lon < 180.0);
     testing.assertEqual($over.lon, -172.0);
+}
+
+func testInterpolateWrapsAFractionTooLargeForFloor() {
+    # lon = 1e30 as a float, 1000000000000000019884624838656, wrapped: 0 mod 8
+    # (ends 656), 7 mod 9 (digit sum 79), 1 mod 5, so 16 mod 360; -180 -> -164
+    def far as Point init interpolate(point(10.0, 0.0), point(10.0, 1.0), 1e30);
+    testing.assertEqual($far.lat, 10.0);
+    testing.assertEqual($far.lon, -164.0);
 }
 
 func testInterpolateCrossesTheAntimeridianTheShortWay() {

@@ -170,13 +170,23 @@ export func withElevation(p as Point, metres as float) {
     # Every reader comes through here. An unbounded height let 1e308 in, and
     # statsOf then overflowed subtracting two of them; a million metres is
     # well past any orbit a track log records.
-    if ($metres < -ELEVATION_LIMIT or $metres > ELEVATION_LIMIT) {
-        fail("elevation " + convert.toString($metres) + " is outside -1000000..1000000 metres");
-    }
+    checkElevation($metres);
     def out as Point init $p;
     $out.ele = $metres;
     $out.hasElevation = true;
     return $out;
+}
+
+/**
+ * Check an elevation against {@link ELEVATION_LIMIT}.
+ *
+ * @param metres {float} elevation in metres
+ * @throws {Error} when it is outside -1,000,000 to 1,000,000 metres
+ */
+func checkElevation(metres as float) {
+    if ($metres < -ELEVATION_LIMIT or $metres > ELEVATION_LIMIT) {
+        fail("elevation " + convert.toString($metres) + " is outside -1000000..1000000 metres");
+    }
 }
 
 /**
@@ -296,7 +306,7 @@ export func describe(doc as Document) {
     $parts[] = countLabel(len($doc.waypoints), "waypoint", "waypoints");
     $parts[] = countLabel(len($doc.routes), "route", "routes");
     $parts[] = countLabel(len($doc.tracks), "track", "tracks");
-    $parts[] = countLabel(len(documentPoints($doc)), "point", "points");
+    $parts[] = countLabel(pointCount($doc), "point", "points");
     def kept as list of string init [];
     for (def part in $parts) {
         if ($part != "") {
@@ -311,6 +321,28 @@ export func describe(doc as Document) {
         return $body;
     }
     return $doc.name + ": " + $body;
+}
+
+/**
+ * How many points a document holds: the length of {@link documentPoints}
+ * without building that list.
+ *
+ * @param doc {Document} the document to count
+ * @return {int} waypoints, route points and track points together
+ */
+func pointCount(doc as Document) {
+    # indexed, not for-in: a for-in variable is a copy of the element, and a
+    # track's element is all of its points
+    def n as int init len($doc.waypoints);
+    for (def i as int init 0; $i < len($doc.routes); $i = $i + 1) {
+        $n = $n + len($doc.routes[$i].points);
+    }
+    for (def i as int init 0; $i < len($doc.tracks); $i = $i + 1) {
+        for (def j as int init 0; $j < len($doc.tracks[$i].segments); $j = $j + 1) {
+            $n = $n + len($doc.tracks[$i].segments[$j].points);
+        }
+    }
+    return $n;
 }
 
 /**

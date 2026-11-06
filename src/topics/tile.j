@@ -37,6 +37,11 @@ export def struct Tile {
 /**
  * The tile a point falls in.
  *
+ * A tile holds its west and north edges, so a corner taken from
+ * {@link tileBounds} maps back to the tile it came from. The row is checked
+ * against the same edge latitudes `tileBounds` computes, which the projection
+ * formula alone misses by one row for about one north edge in six.
+ *
  * @param p {Point} the point to locate
  * @param zoom {int} the zoom level, 0 to 22
  * @return {Tile} the tile holding the point
@@ -54,7 +59,34 @@ export func tileOf(p as Point, zoom as int) {
     def phi as float init toRadians($lat);
     def mercator as float init math.ln(math.tan($phi) + 1.0 / math.cos($phi));
     def y as float init (1.0 - $mercator / math.PI) / 2.0 * $width;
-    return Tile{x: clampIndex($x, $side), y: clampIndex($y, $side), z: $zoom};
+    return Tile{
+        x: clampIndex($x, $side),
+        y: tileRow($lat, clampIndex($y, $side), $width),
+        z: $zoom
+    };
+}
+
+/**
+ * Settle a row index against the edge latitudes {@link tileBounds} reports.
+ *
+ * Row `r` holds latitudes from its south edge, exclusive, to its north edge,
+ * inclusive. The projection formula and the inverse `tileBounds` uses round
+ * differently, so a point on an edge can come out one row off; this moves it
+ * one row back.
+ *
+ * @param lat {float} the latitude, already clamped to the projection
+ * @param row {int} the row the projection formula gave, 0 to `width` - 1
+ * @param width {float} how many tiles span the world at this zoom
+ * @return {int} the row whose edges hold the latitude
+ */
+func tileRow(lat as float, row as int, width as float) {
+    if ($row > 0 and $lat > tileLatitude($row, $width)) {
+        return $row - 1;
+    }
+    if (convert.toFloat($row + 1) < $width and $lat <= tileLatitude($row + 1, $width)) {
+        return $row + 1;
+    }
+    return $row;
 }
 
 /**

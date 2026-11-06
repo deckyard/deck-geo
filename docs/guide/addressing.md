@@ -70,7 +70,9 @@ https://tile.openstreetmap.org/14/8711/5744.png
 
 Zoom runs from 0 to `MAX_ZOOM` (22); anything else raises. `tileBounds`
 returns the latitude and longitude box a tile covers, and raises on an `x` or
-`y` outside the grid. `quadkey` writes the same address as the single string
+`y` outside the grid. A tile holds its west and north edges: `tileOf` of a
+box's north-west corner is the tile itself, of its south-west corner the tile
+below. `quadkey` writes the same address as the single string
 Bing Maps and some tile caches use, one digit per zoom level:
 
 ```jennifer

@@ -72,6 +72,34 @@ func testTileBoundsHoldsThePointThatMadeIt() {
     }
 }
 
+func testTileOfMapsATileCornerBackToItsTile() {
+    # a tile holds its west and north edges: its north-west corner from
+    # tileBounds is inside it, its south-west corner is the next row's
+    def t as Tile init Tile{x: 9, y: 11, z: 4};
+    def box as Bounds init tileBounds($t);
+    testing.assertEqual(tileOf(point($box.maxLat, $box.minLon), 4), $t);
+    testing.assertEqual(tileOf(point($box.minLat, $box.minLon), 4), Tile{x: 9, y: 12, z: 4});
+    # every row's north-west corner, at three zooms
+    for (def zoom in [4, 14, 22]) {
+        def side as int init 1 << $zoom;
+        for (def k as int init 1; $k < 64; $k = $k + 1) {
+            def row as Tile init Tile{x: ($k * 7919) % $side, y: ($k * 104729) % $side, z: $zoom};
+            def edges as Bounds init tileBounds($row);
+            testing.assertEqual(tileOf(point($edges.maxLat, $edges.minLon), $zoom), $row);
+        }
+    }
+}
+
+func testTileRowMovesAnEdgeLatitudeOntoItsRow() {
+    def width as float init 16.0;
+    def north as float init tileLatitude(11, 16.0);
+    testing.assertEqual(tileRow($north, 10, $width), 11);
+    testing.assertEqual(tileRow($north, 11, $width), 11);
+    testing.assertEqual(tileRow($north, 12, $width), 11);
+    testing.assertEqual(tileRow(MERCATOR_LIMIT, 0, $width), 0);
+    testing.assertEqual(tileRow(-MERCATOR_LIMIT, 15, $width), 15);
+}
+
 func testNeighbouringTilesShareAnEdge() {
     def box as Bounds init tileBounds(Tile{x: 8711, y: 5744, z: 14});
     def right as Bounds init tileBounds(Tile{x: 8712, y: 5744, z: 14});
