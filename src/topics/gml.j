@@ -25,7 +25,8 @@ export def const GML_CRS as string init "urn:ogc:def:crs:EPSG::4326";
  *
  *   `Point`, `LineString`, `LinearRing`, `Curve`, `Polygon`
  *   `MultiPoint`, `MultiCurve`, `MultiGeometry`, `MultiSurface`
- *   `pos`, `posList` and the deprecated `coordinates`
+ *   `pos`, `posList` and the deprecated `coordinates` (with its `cs`, `ts`
+ *   and `decimal` separators)
  *
  * Geometries are found at any depth (to `MAX_NESTING`), so an unknown
  * application schema still reads. A feature's `name` or `gml:name` names the
@@ -40,8 +41,8 @@ export def const GML_CRS as string init "urn:ogc:def:crs:EPSG::4326";
  * @param text {string} the document
  * @return {Document} the geometries it held
  * @throws {Error} when the text holds no XML element, a coordinate does not parse
- *   or is out of range, a list does not divide into positions, or the nesting
- *   passes `MAX_NESTING`
+ *   or is out of range, a list does not divide into positions, a `coordinates`
+ *   element names the same separator twice, or the nesting passes `MAX_NESTING`
  * @example
  *   def doc as geo.Document init geo.readGml(fs.readString("features.gml"));
  */
@@ -290,12 +291,94 @@ func positionsOf(src as bytes, field as Node, kind as string, crs as string, dep
         return parseGmlTuples(nodeText($src, $field), gmlDimension($src, $field), $crs);
     }
     if ($kind == "coordinates") {
-        return parseCoordinates(nodeText($src, $field));
+        return gmlCoordinates($src, $field);
     }
     if ($field.openEnd < $field.innerEnd) {
         return gmlPositions($src, $field, $crs, $depth + 1);
     }
     return [];
+}
+
+/**
+ * The positions of a GML 2 `<coordinates>` element, always `lon,lat[,ele]`.
+ *
+ * Its attributes name the separators: `ts` between tuples (default
+ * whitespace), `cs` between the numbers of a tuple (default `,`) and `decimal`
+ * for the decimal point (default `.`). A separator that is whitespace matches
+ * any run of whitespace, as the default `ts` does.
+ *
+ * @param src {bytes} the whole document
+ * @param node {Node} the `coordinates` element
+ * @return {list of Point} the positions, in order
+ * @throws {Error} when two separators are the same character, a tuple has fewer
+ *   than two numbers, or one does not parse or is out of range
+ */
+func gmlCoordinates(src as bytes, node as Node) {
+    def text as string init nodeText($src, $node);
+    def ts as string init gmlSeparator($src, $node, "ts", " ");
+    def cs as string init gmlSeparator($src, $node, "cs", ",");
+    def point2 as string init gmlSeparator($src, $node, "decimal", ".");
+    if ($ts == " " and $cs == "," and $point2 == ".") {
+        return parseCoordinates($text);
+    }
+    if ($ts == $cs or $ts == $point2 or $cs == $point2) {
+        fail("GML coordinates separators ts " + quoted($ts) + ", cs " + quoted($cs) +
+            " and decimal " + quoted($point2) + " are not all different");
+    }
+    def tuples as list of string init [];
+    for (def tuple in splitOn($text, $ts)) {
+        def numbers as list of string init splitOn($tuple, $cs);
+        if ($point2 != ".") {
+            def plain as list of string init [];
+            for (def n in $numbers) {
+                $plain[] = strings.replace($n, $point2, ".");
+            }
+            $numbers = $plain;
+        }
+        $tuples[] = strings.join($numbers, ",");
+    }
+    return coordinateTuples($tuples);
+}
+
+/**
+ * One separator attribute of a GML `<coordinates>` element.
+ *
+ * @param src {bytes} the whole document
+ * @param node {Node} the `coordinates` element
+ * @param attr {string} `ts`, `cs` or `decimal`
+ * @param fallback {string} the separator when the attribute is absent or empty
+ * @return {string} the separator; any whitespace comes back as `" "`
+ */
+func gmlSeparator(src as bytes, node as Node, attr as string, fallback as string) {
+    def stated as string init nodeAttr($src, $node, $attr);
+    if ($stated == "") {
+        return $fallback;
+    }
+    if (len(whitespaceFields($stated)) == 0) {
+        return " ";
+    }
+    return $stated;
+}
+
+/**
+ * Split text into the non-empty pieces between separators.
+ *
+ * @param text {string} the text to split
+ * @param sep {string} the separator; `" "` means any run of XML whitespace
+ * @return {list of string} the pieces, trimmed of XML whitespace, empty ones dropped
+ */
+func splitOn(text as string, sep as string) {
+    if ($sep == " ") {
+        return whitespaceFields($text);
+    }
+    def out as list of string init [];
+    for (def piece in strings.split($text, $sep)) {
+        def trimmed as string init regex.replace(XML_SPACE_ENDS, $piece, "");
+        if ($trimmed != "") {
+            $out[] = $trimmed;
+        }
+    }
+    return $out;
 }
 
 /**

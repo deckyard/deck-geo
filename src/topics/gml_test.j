@@ -120,18 +120,67 @@ func testReadGmlReadsTheDeprecatedCoordinatesElement() {
     testing.assertEqual($points[0].lon, 11.0);
 }
 
-func testReadGmlScalesToManyMembers() {
-    # Same quadratic accumulator as GeoJSON had: 2,000 members took 14 seconds
-    # merging per node against 0.87 seconds appending into locals.
+/**
+ * A GML feature collection of `count` point members.
+ *
+ * @param count {int} how many members
+ * @return {string} the document
+ */
+func gmlMembers(count as int) {
     def parts as list of string init ["<gml:FeatureCollection>"];
-    for (def i as int init 0; $i < 500; $i = $i + 1) {
+    for (def i as int init 0; $i < $count; $i = $i + 1) {
         $parts[] = "<gml:featureMember><gml:Point><gml:pos>47.0 11.0</gml:pos>" +
             "</gml:Point></gml:featureMember>";
     }
     $parts[] = "</gml:FeatureCollection>";
-    def doc as Document init readGml(strings.join($parts, ""));
-    testing.assertEqual(len($doc.waypoints), 500);
-    testing.assertEqual($doc.waypoints[499].lat, 47.0);
+    return strings.join($parts, "");
+}
+
+func testReadGmlScalesToManyMembers() {
+    # Merging per node copies the accumulated lists every time, quadratic: 2,000
+    # members took 14 seconds that way against 0.87 seconds appending into locals.
+    # Eight times the members costs about 8 times as long when linear, and over
+    # 30 times with the per-node merge put back (measured).
+    def small as string init gmlMembers(150);
+    def large as string init gmlMembers(1200);
+    testing.assertTrue(growthRatio(readGml, $small, $large) < 20.0);
+    def doc as Document init readGml($large);
+    testing.assertEqual(len($doc.waypoints), 1200);
+    testing.assertEqual($doc.waypoints[1199].lat, 47.0);
+}
+
+func testReadGmlReadsCoordinatesWithStatedSeparators() {
+    # GML 2 lets <coordinates> name its separators: here a space between the
+    # numbers and a semicolon between tuples, still lon,lat
+    def text as string init "<gml:LineString>" +
+        "<gml:coordinates cs=\" \" ts=\";\">11 47; 12.5 48.25</gml:coordinates>" +
+        "</gml:LineString>";
+    def points as list of Point init trackPoints(readGml($text).tracks[0]);
+    testing.assertEqual(len($points), 2);
+    testing.assertEqual($points[0].lat, 47.0);
+    testing.assertEqual($points[0].lon, 11.0);
+    testing.assertEqual($points[1].lat, 48.25);
+    testing.assertEqual($points[1].lon, 12.5);
+}
+
+func testReadGmlReadsCoordinatesWithADecimalComma() {
+    # decimal="," with cs=" " and ts=";": "11,5 47,25" is lon 11.5, lat 47.25
+    def text as string init "<gml:Point>" +
+        "<gml:coordinates decimal=\",\" cs=\" \" ts=\";\">11,5 47,25 574,5</gml:coordinates>" +
+        "</gml:Point>";
+    def p as Point init readGml($text).waypoints[0];
+    testing.assertEqual($p.lat, 47.25);
+    testing.assertEqual($p.lon, 11.5);
+    testing.assertEqual($p.ele, 574.5);
+}
+
+func failOnClashingCoordinateSeparators() {
+    # decimal and cs both "," cannot be told apart
+    readGml("<gml:Point><gml:coordinates decimal=\",\">11,5,47,25</gml:coordinates></gml:Point>");
+}
+
+func testReadGmlRefusesClashingCoordinateSeparators() {
+    testing.assertThrows("failOnClashingCoordinateSeparators", ERROR_KIND);
 }
 
 func testReadGmlIgnoresWhatIsNotAGeometry() {

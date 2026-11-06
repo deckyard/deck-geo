@@ -21,8 +21,10 @@
  *
  * @param text {string} the document
  * @return {Document} what it held
- * @throws {Error} when the text is not JSON, a position is malformed or out of
- *   range, or geometry collections nest past `MAX_NESTING`
+ * @throws {Error} when the text is not JSON, the root is not an object with a
+ *   string `type`, a feature or geometry is not an object (a feature's
+ *   `geometry` may be `null`), a position is malformed or out of range, or
+ *   geometry collections nest past `MAX_NESTING`
  * @example
  *   def doc as geo.Document init geo.readGeojson(fs.readString("places.geojson"));
  */
@@ -32,6 +34,12 @@ export func readGeojson(text as string) {
         $root = json.decode($text);
     } catch (e) {
         fail("not JSON: " + $e.message);
+    }
+    # Valid JSON that is not GeoJSON - an array, a scalar, an object with no
+    # "type" - is refused rather than read as an empty document.
+    jsonObject($root, "not a GeoJSON document: the root");
+    if (not json.has($root, "/type") or json.typeOf(json.get($root, "/type")) != "string") {
+        fail("not a GeoJSON document: the root has no \"type\" string");
     }
     def out as Document init document();
     def kind as string init jsonString($root, "/type");
@@ -70,7 +78,9 @@ func readFeatureCollection(into as Document, root as json.Value) {
     def count as int init json.length($features);
     for (def i as int init 0; $i < $count; $i = $i + 1) {
         def at as string init "/features/" + convert.toString($i);
-        def got as Document init readFeature(json.get($root, $at), 0);
+        def feature as json.Value init json.get($root, $at);
+        jsonObject($feature, "GeoJSON feature " + convert.toString($i));
+        def got as Document init readFeature($feature, 0);
         for (def p in $got.waypoints) {
             $waypoints[] = $p;
         }
@@ -102,7 +112,13 @@ func readFeature(feature as json.Value, depth as int) {
     if (not json.has($feature, "/geometry")) {
         return document();
     }
-    return readGeometry(json.get($feature, "/geometry"), $name, $desc, $sym, $depth);
+    def geometry as json.Value init json.get($feature, "/geometry");
+    # RFC 7946 3.2: an unlocated feature has a null geometry.
+    if (json.typeOf($geometry) == "null") {
+        return document();
+    }
+    jsonObject($geometry, "a GeoJSON feature's geometry");
+    return readGeometry($geometry, $name, $desc, $sym, $depth);
 }
 
 /**
@@ -182,6 +198,7 @@ func readGeometryCollection(
     for (def i as int init 0; $i < $count; $i = $i + 1) {
         def at as string init "/geometries/" + convert.toString($i);
         def inner as json.Value init json.get($geometry, $at);
+        jsonObject($inner, "GeoJSON geometry " + convert.toString($i));
         def got as Document init readGeometry($inner, $name, $desc, $sym, $depth + 1);
         for (def p in $got.waypoints) {
             $waypoints[] = $p;
@@ -364,6 +381,22 @@ func jsonArray(node as json.Value, what as string) {
     def kind as string init json.typeOf($node);
     if ($kind != "list") {
         fail($what + " is a JSON " + $kind + ", not an array");
+    }
+    return $node;
+}
+
+/**
+ * Check that a JSON value is an object.
+ *
+ * @param node {json.Value} the value to check
+ * @param what {string} what it is, for the message
+ * @return {json.Value} the same value
+ * @throws {Error} when the value is not an object
+ */
+func jsonObject(node as json.Value, what as string) {
+    def kind as string init json.typeOf($node);
+    if ($kind != "map") {
+        fail($what + " is a JSON " + $kind + ", not an object");
     }
     return $node;
 }

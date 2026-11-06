@@ -98,13 +98,56 @@ func testReadGeojsonIgnoresAGeometryTypeItDoesNotModel() {
     testing.assertEqual(len($doc.tracks), 0);
 }
 
-func testReadGeojsonScalesToManyFeatures() {
-    # Accumulating with a merge per feature copies the growing lists every time:
-    # 2,000 features took 8.6 seconds that way against 0.12 seconds appending
-    # into locals. This reads a collection big enough that the quadratic form
-    # would be visible in the suite's runtime.
+/**
+ * How much longer a reader takes on a large input than on a small one.
+ *
+ * Each input is read three times and the fastest run kept, so one pause does
+ * not decide the result. Comparing two sizes on the same machine, rather than
+ * one time against a bound, separates linear from quadratic growth on a slow
+ * runner too.
+ *
+ * @param reader {func} a reader taking one string
+ * @param small {string} the small input
+ * @param large {string} the large input
+ * @return {float} large time over small time, each at least 1 ms
+ */
+func growthRatio(reader as func, small as string, large as string) {
+    return convert.toFloat(bestMillis($reader, $large)) /
+        convert.toFloat(bestMillis($reader, $small));
+}
+
+/**
+ * The fastest of three runs of a reader, in milliseconds, at least 1.
+ *
+ * @param reader {func} a reader taking one string
+ * @param text {string} its input
+ * @return {int} the fastest run
+ */
+func bestMillis(reader as func, text as string) {
+    def best as int init -1;
+    for (def i as int init 0; $i < 3; $i = $i + 1) {
+        def started as int init time.unixMillis(time.now());
+        $reader($text);
+        def took as int init time.unixMillis(time.now()) - $started;
+        if ($best < 0 or $took < $best) {
+            $best = $took;
+        }
+    }
+    if ($best < 1) {
+        return 1;
+    }
+    return $best;
+}
+
+/**
+ * A GeoJSON feature collection of `count` named points.
+ *
+ * @param count {int} how many features
+ * @return {string} the document
+ */
+func geojsonFeatures(count as int) {
     def parts as list of string init ['{"type": "FeatureCollection", "features": ['];
-    for (def i as int init 0; $i < 500; $i = $i + 1) {
+    for (def i as int init 0; $i < $count; $i = $i + 1) {
         def sep as string init ",";
         if ($i == 0) {
             $sep = "";
@@ -113,9 +156,20 @@ func testReadGeojsonScalesToManyFeatures() {
             ' "geometry": {"type": "Point", "coordinates": [11.0, 47.0]}}';
     }
     $parts[] = ']}';
-    def doc as Document init readGeojson(strings.join($parts, ""));
-    testing.assertEqual(len($doc.waypoints), 500);
-    testing.assertEqual($doc.waypoints[499].name, "p");
+    return strings.join($parts, "");
+}
+
+func testReadGeojsonScalesToManyFeatures() {
+    # Accumulating with a merge per feature copies the growing lists every time:
+    # 2,000 features took 8.6 seconds that way against 0.12 seconds appending
+    # into locals. Eight times the features costs about 8 times as long when
+    # linear, and over 30 times with the per-feature merge put back (measured).
+    def small as string init geojsonFeatures(250);
+    def large as string init geojsonFeatures(2000);
+    testing.assertTrue(growthRatio(readGeojson, $small, $large) < 20.0);
+    def doc as Document init readGeojson($large);
+    testing.assertEqual(len($doc.waypoints), 2000);
+    testing.assertEqual($doc.waypoints[1999].name, "p");
     testing.assertEqual($doc.waypoints[0].lat, 47.0);
 }
 
@@ -284,6 +338,53 @@ func failOnObjectFeatures() {
 
 func failOnNumberGeometries() {
     readGeojson('{"type":"GeometryCollection","geometries":5}');
+}
+
+func failOnAnArrayRoot() {
+    readGeojson("[11, 47]");
+}
+
+func failOnANumberRoot() {
+    readGeojson("42");
+}
+
+func failOnARootWithNoType() {
+    readGeojson('{"coordinates": [11, 47]}');
+}
+
+func failOnARootTypeThatIsNotAString() {
+    readGeojson('{"type": 5, "coordinates": [11, 47]}');
+}
+
+func failOnAFeatureThatIsNotAnObject() {
+    readGeojson('{"type": "FeatureCollection", "features": [5]}');
+}
+
+func failOnAGeometryThatIsNotAnObject() {
+    readGeojson('{"type": "Feature", "properties": {}, "geometry": "Point"}');
+}
+
+func failOnACollectionMemberThatIsNotAnObject() {
+    readGeojson('{"type": "GeometryCollection", "geometries": [[11, 47]]}');
+}
+
+func testReadGeojsonRefusesJsonThatIsNotGeojson() {
+    # valid JSON of the wrong shape used to read as an empty document
+    testing.assertThrows("failOnAnArrayRoot", ERROR_KIND);
+    testing.assertThrows("failOnANumberRoot", ERROR_KIND);
+    testing.assertThrows("failOnARootWithNoType", ERROR_KIND);
+    testing.assertThrows("failOnARootTypeThatIsNotAString", ERROR_KIND);
+    testing.assertThrows("failOnAFeatureThatIsNotAnObject", ERROR_KIND);
+    testing.assertThrows("failOnAGeometryThatIsNotAnObject", ERROR_KIND);
+    testing.assertThrows("failOnACollectionMemberThatIsNotAnObject", ERROR_KIND);
+}
+
+func testReadGeojsonAcceptsAnUnlocatedFeature() {
+    # RFC 7946 3.2: a null geometry is a feature with no location
+    def text as string init '{"type": "FeatureCollection", "features": [' +
+        '{"type": "Feature", "properties": null, "geometry": null},' +
+        '{"type": "Feature", "properties": {}, "geometry": {"type": "Point", "coordinates": [11, 47]}}]}';
+    testing.assertEqual(len(readGeojson($text).waypoints), 1);
 }
 
 func testReadGeojsonRejectsArraysOfTheWrongType() {

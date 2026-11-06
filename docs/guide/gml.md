@@ -27,6 +27,13 @@ def out as string init geo.writeGml($doc);
 | `<gml:pos>`, `<gml:posList>` | the coordinates |
 | `<gml:coordinates>` | the coordinates, pre-3.0 spelling, `lon,lat` tuples as in KML |
 
+`<gml:coordinates>` honours its `ts` (tuple separator, default whitespace),
+`cs` (number separator, default `,`) and `decimal` (default `.`) attributes,
+so `<gml:coordinates decimal="," cs=" " ts=";">11,5 47,25</gml:coordinates>`
+reads as longitude 11.5, latitude 47.25. A separator that is whitespace
+matches any run of whitespace; two separators that are the same character
+raise.
+
 Unlike KML and GeoJSON, a GML polygon's inner rings are not dropped: each
 comes back as a track of its own after the outer ring.
 
@@ -109,7 +116,9 @@ and track segment. Each holds a `gml:Feature` with a `gml:name` and a
 
 Positions are written two-dimensional (`srsDimension="2"`), so elevations are
 dropped, as are descriptions, symbols and times. A path of fewer than two
-points is not written.
+points is not written. Names are trimmed on read, so leading and trailing
+whitespace does not survive a round trip. A multi-segment track comes back as
+one track per segment.
 
 The output is not schema-valid against any application schema, since GML has
 no generic one. It carries geometry between readers of the same subset; to

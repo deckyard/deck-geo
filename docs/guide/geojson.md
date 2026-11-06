@@ -30,10 +30,14 @@ geometry.
 | `GeometryCollection` | each geometry inside it |
 
 Inner rings (holes) are dropped. Any other `type`, or a feature with no
-geometry, contributes nothing, so a collection that mixes a `Point` with
-something unsupported still yields the point. A position with fewer than two
-numbers, a coordinate out of range, or an array member of the wrong JSON type
-raises.
+geometry or a `null` one, contributes nothing, so a collection that mixes a
+`Point` with something unsupported still yields the point. A position with
+fewer than two numbers, a coordinate out of range, or an array member of the
+wrong JSON type raises.
+
+JSON that is not GeoJSON raises rather than reading as an empty document: a
+root that is not an object or has no string `type`, and a feature, a
+feature's `geometry` or a `GeometryCollection` member that is not an object.
 
 ## Names live in properties
 
