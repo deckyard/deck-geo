@@ -40,7 +40,8 @@ separated by any run of whitespace, newlines and indentation included.
 
 `<Folder>` and nested `<Document>` elements are walked to any depth up to
 `MAX_NESTING`, and the nesting is flattened. A polygon's inner rings (its
-holes) are dropped. `<TimeStamp>` and `<gx:Track>` are not read, and nothing
+holes) are dropped; a polygon whose outer ring is empty contributes nothing.
+`<TimeStamp>` and `<gx:Track>` are not read, and nothing
 is written for them, so a track converted to KML loses its timing and with it
 everything [`statsOf`](measuring.md) derives from timing.
 
@@ -59,6 +60,10 @@ survive, the grouping does not, because KML cannot say that two lines in one
 placemark are runs of one recording. A path of fewer than two points is not
 written; write it as a waypoint. `sym` is not written.
 
+Names and descriptions are trimmed on read, because KML is routinely indented
+inside its elements, so leading and trailing whitespace does not survive a
+round trip, and a name of only whitespace is not written.
+
 ## KMZ
 
 A KMZ is a zip holding a KML document and the files it references. `readKmz`
@@ -76,15 +81,27 @@ about a third the size of its KML.
 
 ### Untrusted KMZ files
 
-**`readKmz` decompresses the whole archive into memory, with no limit.** Zip
-compresses XML at better than 400:1, so a 1 MB archive can expand to half a
-gigabyte and a 20 MB one to 10 GB. `archive.unpack` takes a buffer and returns
-every entry decompressed, so there is no size limit to pass.
+Zip compresses XML at better than 400:1, so the size of a KMZ says little
+about what it unpacks to: a 1 MB archive can expand to half a gigabyte.
+`readKmz` therefore inflates through `archive.unpackWith` with two caps, and
+refuses the archive with `kind` `"geo"` as soon as one is passed:
 
-For KMZ files from an untrusted source, reject archives above a size you can
-afford to decompress a few hundred times over, or read them in a process you
-can afford to lose. The four text formats have no such hazard: a reader holds
-the input plus the points read so far.
+| Cap | Value | Bounds |
+|---|---|---|
+| `MAX_KMZ_ENTRY_BYTES` | 16 MiB | any one entry, the KML or a file beside it |
+| `MAX_KMZ_TOTAL_BYTES` | 64 MiB | all entries together |
+
+The message names the cap that was passed. The total matters on its own:
+fifteen entries just under 16 MiB fit in a 246 KB archive. An archive with
+more than 65,536 entries is refused by `archive` itself.
+
+16 MiB is already a large KML: reading one costs far more memory than its
+text. For a trusted archive that needs more, unpack it yourself with
+`archive.unpackWith` and larger `maxEntryBytes` / `maxTotalBytes`, and pass
+the KML entry's text to `readKml`.
+
+A symbolic link, device or FIFO member holds no file, so it is skipped rather
+than refusing the archive.
 
 Entry names are never used as paths, so an entry that tries to escape its
 directory does no harm; `archive.unpack` rejects one anyway.

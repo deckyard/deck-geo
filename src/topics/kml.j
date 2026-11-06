@@ -11,6 +11,36 @@ export def const KML_NAMESPACE as string init "http://www.opengis.net/kml/2.2";
 /** The entry a KMZ archive keeps its document in. */
 export def const KMZ_ENTRY as string init "doc.kml";
 
+/** A run of XML whitespace, as RE2: what separates KML tuples and GML numbers. */
+def const XML_SPACE_RUN as string init '[ \t\n\r]+';
+
+/** XML whitespace at either end of a text, as RE2. */
+def const XML_SPACE_ENDS as string init '^[ \t\n\r]+|[ \t\n\r]+$';
+
+/**
+ * The most one KMZ entry may inflate to before `readKmz` refuses: 16 MiB.
+ *
+ * Zip compresses XML at better than 400:1, so the archive's own size says
+ * little about what it unpacks to. The cap is passed to `archive.unpackWith`,
+ * which stops inflating an entry at the limit, so a hostile archive costs at
+ * most this much per entry rather than whatever it claims. 16 MiB is already
+ * a large KML - reading one costs far more memory than its text - while the
+ * images a KMZ carries beside it are rarely more than a few MB. The archive as
+ * a whole is bounded by `MAX_KMZ_TOTAL_BYTES`.
+ */
+export def const MAX_KMZ_ENTRY_BYTES as int init 16777216;
+
+/**
+ * The most a whole KMZ may inflate to, summed over its entries, before
+ * `readKmz` refuses: 64 MiB.
+ *
+ * A per-entry cap alone lets many entries just under it add up: fifteen 16 MiB
+ * entries in a 246 KB archive peaked at 546 MB of memory under
+ * `archive.unpack`'s default 256 MiB total. 64 MiB is four KML documents at
+ * `MAX_KMZ_ENTRY_BYTES`, or one with ample room for its images.
+ */
+export def const MAX_KMZ_TOTAL_BYTES as int init 67108864;
+
 /**
  * Read a KML document.
  *
@@ -188,14 +218,15 @@ func geometryNodes(src as bytes, fields as list of Node, depth as int) {
  */
 func isGeometry(name as string) {
     return $name == "Point" or $name == "LineString" or $name == "LinearRing" or
-        $name == "Polygon" or $name == "Track";
+        $name == "Polygon";
 }
 
 /**
  * The points of one KML geometry.
  *
  * A `Polygon` is read as its outer ring; the inner rings that cut holes in it
- * have nowhere to go in a point-and-path model, so they are dropped.
+ * have nowhere to go in a point-and-path model, so they are dropped, even when
+ * the outer ring is empty.
  *
  * @param src {bytes} the whole document
  * @param geometry {Node} the geometry element
@@ -211,6 +242,11 @@ func geometryPoints(src as bytes, geometry as Node, depth as int) {
         return parseCoordinates(nodeText($src, $coords));
     }
     for (def nested in $fields) {
+        # A hole is never the shape: with an empty outer ring, the polygon
+        # has no points rather than a hole's.
+        if (localName($nested.name) == "innerBoundaryIs") {
+            continue;
+        }
         def inner as list of Point init geometryPoints($src, $nested, $depth + 1);
         if (len($inner) > 0) {
             return $inner;
@@ -233,11 +269,26 @@ func geometryPoints(src as bytes, geometry as Node, depth as int) {
  *   parseCoordinates("11.4041,47.2692,574");
  */
 func parseCoordinates(text as string) {
+    return coordinateTuples(whitespaceFields($text));
+}
+
+/**
+ * Parse `lon,lat[,ele]` tuples, already separated.
+ *
+ * Shared by KML and GML `<coordinates>`, which differ only in how a list is
+ * split into tuples.
+ *
+ * @param tuples {list of string} one `lon,lat` or `lon,lat,ele` per entry
+ * @return {list of Point} the points, in order
+ * @throws {Error} when a tuple has fewer than two numbers, or one does not parse
+ *   or is out of range
+ */
+func coordinateTuples(tuples as list of string) {
     def out as list of Point init [];
-    for (def tuple in whitespaceFields($text)) {
+    for (def tuple in $tuples) {
         def numbers as list of string init strings.split($tuple, ",");
         if (len($numbers) < 2) {
-            fail("coordinate tuple \"" + $tuple + "\" has no comma");
+            fail("coordinate tuple " + quoted($tuple) + " has no comma");
         }
         def lon as float init number($numbers[0], "a KML longitude");
         def lat as float init number($numbers[1], "a KML latitude");
@@ -252,28 +303,22 @@ func parseCoordinates(text as string) {
 }
 
 /**
- * Split text on runs of whitespace, dropping the empty pieces.
+ * Split text on runs of XML whitespace, dropping the empty pieces.
+ *
+ * Two native regex passes - trim the ends, split on the runs - rather than a
+ * loop over `strings.chars`, which cost about 570 bytes per character and
+ * built each token a character at a time, quadratic in its length: 1.4 MB of
+ * KML took 4.5 s, and one 200,000-character token 13 s.
  *
  * @param text {string} the text to split
  * @return {list of string} the non-empty fields
  */
 func whitespaceFields(text as string) {
-    def out as list of string init [];
-    def current as string init "";
-    for (def ch in strings.chars($text)) {
-        if (isSpace($ch)) {
-            if ($current != "") {
-                $out[] = $current;
-            }
-            $current = "";
-        } else {
-            $current = $current + $ch;
-        }
+    def inner as string init regex.replace(XML_SPACE_ENDS, $text, "");
+    if ($inner == "") {
+        return [];
     }
-    if ($current != "") {
-        $out[] = $current;
-    }
-    return $out;
+    return regex.split(XML_SPACE_RUN, $inner);
 }
 
 /**
@@ -424,21 +469,36 @@ func coordinateText(p as Point) {
  *
  * A KMZ is a zip holding a KML document and the files it references. The
  * entry named `doc.kml` is read; without one, the first `.kml` at the root,
- * then the first `.kml` anywhere. The whole archive is decompressed into
- * memory with no size limit, so bound an untrusted input before calling this.
+ * then the first `.kml` anywhere. Every entry is inflated into memory, so the
+ * archive is refused rather than inflated in full when one entry - the KML or
+ * anything beside it - passes `MAX_KMZ_ENTRY_BYTES`, or all of them together
+ * pass `MAX_KMZ_TOTAL_BYTES`. A symbolic link, device or FIFO member is
+ * skipped, as it holds no file. For a trusted, larger archive, unpack it with
+ * `archive.unpackWith` and hand the KML to `readKml`.
  *
  * @param data {bytes} the archive
  * @return {Document} what the KML inside held
- * @throws {Error} when the data is not a zip, holds no `.kml` entry, or the KML
- *   does not parse
+ * @throws {Error} when the data is not a zip, an entry inflates past
+ *   `MAX_KMZ_ENTRY_BYTES`, the entries together past `MAX_KMZ_TOTAL_BYTES`, it
+ *   holds more entries than `archive.unpack` allows, it holds no `.kml` entry,
+ *   or the KML does not parse
  * @example
  *   def doc as geo.Document init geo.readKmz(fs.readBytes("places.kmz"));
  */
 export func readKmz(data as bytes) {
     def entries as list of archive.Entry init [];
+    def caps as archive.UnpackOptions init archive.UnpackOptions{
+        maxEntryBytes: MAX_KMZ_ENTRY_BYTES,
+        maxTotalBytes: MAX_KMZ_TOTAL_BYTES,
+        skipSpecial: true
+    };
     try {
-        $entries = archive.unpack($data, "zip");
+        $entries = archive.unpackWith($data, "zip", $caps);
     } catch (e) {
+        if ($e.kind == "limit") {
+            fail("the KMZ archive is too large to read (" + kmzLimitBroken($e.message) + "): " +
+                $e.message);
+        }
         fail("not a KMZ archive: " + $e.message);
     }
     def chosen as int init kmzEntryIndex($entries);
@@ -446,6 +506,25 @@ export func readKmz(data as bytes) {
         fail("the KMZ archive holds no .kml entry");
     }
     return readKmlBytes(toUtf8($entries[$chosen].data));
+}
+
+/**
+ * Which KMZ cap an `archive.unpackWith` limit error reports.
+ *
+ * `archive` raises every cap as `kind` `"limit"` and tells them apart only in
+ * the message, so this matches the wording it uses for each.
+ *
+ * @param message {string} the `"limit"` error's message
+ * @return {string} the cap that was passed and its value, for the message
+ */
+func kmzLimitBroken(message as string) {
+    if (strings.contains($message, "per-entry")) {
+        return "MAX_KMZ_ENTRY_BYTES is " + convert.toString(MAX_KMZ_ENTRY_BYTES);
+    }
+    if (strings.contains($message, "total")) {
+        return "MAX_KMZ_TOTAL_BYTES is " + convert.toString(MAX_KMZ_TOTAL_BYTES);
+    }
+    return "past archive.unpack's own limit";
 }
 
 /**

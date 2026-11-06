@@ -69,6 +69,27 @@ func testReadKmlReadsAPolygonAsItsOuterRing() {
     testing.assertEqual(len(trackPoints($doc.tracks[0])), 5);
 }
 
+func testReadKmlDropsTheHolesOfAPolygonWithAnEmptyOuterRing() {
+    # the inner ring is a hole, not the shape: an empty outer ring leaves nothing
+    def text as string init "<kml><Placemark><name>Hole</name><Polygon>" +
+        "<outerBoundaryIs><LinearRing><coordinates></coordinates></LinearRing>" +
+        "</outerBoundaryIs><innerBoundaryIs><LinearRing><coordinates>" +
+        "0.1,0.1 0.2,0.1 0.2,0.2 0.1,0.1</coordinates></LinearRing>" +
+        "</innerBoundaryIs></Polygon></Placemark></kml>";
+    def doc as Document init readKml($text);
+    testing.assertEqual(len($doc.tracks), 0);
+    testing.assertEqual(len($doc.waypoints), 0);
+}
+
+func testIsGeometryCoversOnlyShapesWithCoordinates() {
+    testing.assertTrue(isGeometry("Point"));
+    testing.assertTrue(isGeometry("LineString"));
+    testing.assertTrue(isGeometry("LinearRing"));
+    testing.assertTrue(isGeometry("Polygon"));
+    # gx:Track carries <gx:coord> and <when>, not <coordinates>; it is not read
+    testing.assertFalse(isGeometry("Track"));
+}
+
 func testReadKmlUnwrapsAMultiGeometry() {
     def text as string init "<kml><Document><Placemark><name>Both</name>" +
         "<MultiGeometry><Point><coordinates>11,47</coordinates></Point>" +
@@ -153,6 +174,33 @@ func testParseCoordinatesOfNothing() {
 func testWhitespaceFields() {
     testing.assertEqual(whitespaceFields(" a  b\n\tc "), ["a", "b", "c"]);
     testing.assertEqual(len(whitespaceFields("   ")), 0);
+    testing.assertEqual(whitespaceFields("\r\na\r\n\tb"), ["a", "b"]);
+    testing.assertEqual(whitespaceFields("ab"), ["ab"]);
+    # only XML whitespace separates: a no-break space is part of the field
+    testing.assertEqual(whitespaceFields("a\u00a0b c"), ["a\u00a0b", "c"]);
+}
+
+func failOnALongTupleWithNoComma() {
+    readKml("<kml><Placemark><Point><coordinates>" + strings.repeat("1", 200000) +
+        "</coordinates></Point></Placemark></kml>");
+}
+
+func testReadKmlRefusesALongBadTupleQuicklyWithAShortMessage() {
+    # Building the token a character at a time was quadratic: 200,000 characters
+    # took 13 s, and the message carried all of them. 2 s is 100 times the
+    # linear cost; quoted() caps the echo at 48 characters plus its length.
+    def started as int init time.unixMillis(time.now());
+    def message as string init "";
+    try {
+        failOnALongTupleWithNoComma();
+    } catch (e) {
+        testing.assertEqual($e.kind, ERROR_KIND);
+        $message = $e.message;
+    }
+    testing.assertTrue(time.unixMillis(time.now()) - $started < 2000);
+    testing.assertContains($message, "has no comma");
+    testing.assertContains($message, "(200000 characters)");
+    testing.assertTrue(len($message) < 200);
 }
 
 func testWriteKmlStructure() {
@@ -268,4 +316,103 @@ func failOnKmzWithNoKml() {
 func testReadKmzRejectsWhatIsNotAKmz() {
     testing.assertThrows("failOnKmzThatIsNotAZip", ERROR_KIND);
     testing.assertThrows("failOnKmzWithNoKml", ERROR_KIND);
+}
+
+func failOnKmzPastTheEntryCap() {
+    # valid KML padded one byte past the cap: deflates to a few KB, so the
+    # archive is small and only its inflated size is refused
+    def text as string init kmlFixture();
+    $text = $text + strings.repeat(" ", MAX_KMZ_ENTRY_BYTES + 1 - len($text));
+    def doc as archive.Entry init archive.Entry{
+        name: "doc.kml",
+        data: convert.bytesFromString($text, "utf-8"),
+        mode: 0o644,
+        mtime: 0
+    };
+    readKmz(archive.pack([$doc], "zip"));
+}
+
+func testReadKmzRefusesAnEntryPastTheCap() {
+    def message as string init "";
+    try {
+        failOnKmzPastTheEntryCap();
+    } catch (e) {
+        testing.assertEqual($e.kind, ERROR_KIND);
+        $message = $e.message;
+    }
+    testing.assertTrue(strings.contains($message, "MAX_KMZ_ENTRY_BYTES"));
+    testing.assertFalse(strings.contains($message, "MAX_KMZ_TOTAL_BYTES"));
+}
+
+func failOnKmzPastTheTotalCap() {
+    # five entries, each under MAX_KMZ_ENTRY_BYTES, that together pass
+    # MAX_KMZ_TOTAL_BYTES: 5 * (16 MiB - 1) > 64 MiB
+    def entries as list of archive.Entry init [];
+    $entries[] = archive.Entry{
+        name: "doc.kml",
+        data: convert.bytesFromString(kmlFixture(), "utf-8"),
+        mode: 0o644,
+        mtime: 0
+    };
+    def padding as bytes init binary.make(MAX_KMZ_ENTRY_BYTES - 1);
+    for (def i as int init 0; $i < 5; $i = $i + 1) {
+        $entries[] = archive.Entry{
+            name: "files/pad" + convert.toString($i) + ".png",
+            data: $padding,
+            mode: 0o644,
+            mtime: 0
+        };
+    }
+    readKmz(archive.pack($entries, "zip"));
+}
+
+func testReadKmzRefusesEntriesPastTheTotalCap() {
+    testing.assertTrue(5 * (MAX_KMZ_ENTRY_BYTES - 1) > MAX_KMZ_TOTAL_BYTES);
+    def message as string init "";
+    try {
+        failOnKmzPastTheTotalCap();
+    } catch (e) {
+        testing.assertEqual($e.kind, ERROR_KIND);
+        $message = $e.message;
+    }
+    # names the cap that was passed, not the per-entry one
+    testing.assertContains($message, "MAX_KMZ_TOTAL_BYTES");
+    testing.assertFalse(strings.contains($message, "MAX_KMZ_ENTRY_BYTES"));
+}
+
+func testKmzLimitBrokenNamesTheCapArchiveReports() {
+    # the three cap messages archive.unpackWith raises with kind "limit"
+    testing.assertContains(
+        kmzLimitBroken("archive.unpackWith: an archive entry exceeds the 16777216-byte per-entry limit"),
+        "MAX_KMZ_ENTRY_BYTES");
+    testing.assertContains(
+        kmzLimitBroken("archive.unpackWith: total decompressed size exceeds the 67108864-byte limit"),
+        "MAX_KMZ_TOTAL_BYTES");
+    def count as string init kmzLimitBroken("archive.unpackWith: archive holds more than 65536 entries");
+    testing.assertFalse(strings.contains($count, "MAX_KMZ"));
+}
+
+/**
+ * A KMZ whose `doc.kml` sits beside a symbolic link named `link`.
+ *
+ * Written by Python's zipfile (a link is an entry with Unix mode 0o120777 in
+ * its external attributes), which `archive.pack` cannot produce.
+ */
+func kmzWithASymlink() {
+    def parts as list of string init [
+        "UEsDBBQAAAAAAAAAIQDH+A8vUQAAAFEAAAAHAAAAZG9jLmttbDxrbWw+PFBsYWNlbWFyaz48UG9p",
+        "bnQ+PGNvb3JkaW5hdGVzPjExLDQ3PC9jb29yZGluYXRlcz48L1BvaW50PjwvUGxhY2VtYXJrPjwv",
+        "a21sPlBLAwQUAAAAAAAAACEAz8OdVQcAAAAHAAAABAAAAGxpbmtkb2Mua21sUEsBAhQDFAAAAAAA",
+        "AAAhAMf4Dy9RAAAAUQAAAAcAAAAAAAAAAAAAAIABAAAAAGRvYy5rbWxQSwECFAMUAAAAAAAAACEA",
+        "z8OdVQcAAAAHAAAABAAAAAAAAAAAAAAA/6F2AAAAbGlua1BLBQYAAAAAAgACAGcAAACfAAAAAAA="
+    ];
+    return encoding.fromText(strings.join($parts, ""), "base64");
+}
+
+func testReadKmzSkipsASymbolicLink() {
+    # the link holds no file; it must not cost the document beside it
+    def doc as Document init readKmz(kmzWithASymlink());
+    testing.assertEqual(len($doc.waypoints), 1);
+    testing.assertEqual($doc.waypoints[0].lat, 47.0);
+    testing.assertEqual($doc.waypoints[0].lon, 11.0);
 }

@@ -61,11 +61,13 @@ try {
 
 A reader raises on: a root element of another format, a coordinate that is
 not a number or lies outside -90..90 / -180..180, a GML coordinate list that
-does not divide into whole positions, a KMZ with no KML inside, an extension
-that names no format, and nesting deeper than `MAX_NESTING` (100).
+does not divide into whole positions, JSON that is not GeoJSON, a KMZ with no
+KML inside or one past `MAX_KMZ_ENTRY_BYTES` / `MAX_KMZ_TOTAL_BYTES`, an
+extension that names no format, and nesting deeper than `MAX_NESTING` (100).
 
 Damage a reader can work around is not an error. A file cut short yields the
-points written before the cut, an unknown entity is left as written, and
+points written before the cut, a GPX point left unclosed mid-file is dropped
+without hiding the points after it, an unknown entity is left as written, and
 markup the model does not cover is ignored. `tools/fuzz.j` checks this line on
 every commit with about 1,800 seeded inputs (truncated, byte-bent and
 type-swapped fixtures): each either reads into points that are all on the
@@ -73,8 +75,10 @@ Earth, and survives a write and re-read in all four text formats, or raises
 `kind` `"geo"`.
 
 Nothing beyond the five predefined XML entities and numeric character
-references is expanded, and no external entity is fetched. An untrusted KMZ is
-a risk because decompression is unbounded: see [KML and KMZ](guide/kml.md).
+references is expanded, and no external entity is fetched. A KMZ entry that
+inflates past `MAX_KMZ_ENTRY_BYTES` (16 MiB), or an archive past
+`MAX_KMZ_TOTAL_BYTES` (64 MiB) in all, is refused rather than unpacked: see
+[KML and KMZ](guide/kml.md).
 
 ## Contents
 

@@ -133,6 +133,10 @@ On a sphere of radius `EARTH_RADIUS`. See [Measuring](../guide/measuring.md).
 
 ## Geometry
 
+| Constant | Value | Meaning |
+|---|---|---|
+| `MAX_RESAMPLE_POINTS` | `1000000` | The most points `resample` returns; a longer request raises before building any. |
+
 | Signature | Returns | Does |
 |---|---|---|
 | `bounds(points)` | `Bounds` | The smallest latitude and longitude rectangle holding every point. |
@@ -140,7 +144,7 @@ On a sphere of radius `EARTH_RADIUS`. See [Measuring](../guide/measuring.md).
 | `boundsCenter(box)` | `Point` | The centre of a rectangle. |
 | `centroid(points)` | `Point` | The mean position of a list of points. |
 | `crossTrackDistance(p, a, b)` | `float` | How far a point lies off the great circle through two others, in metres. |
-| `simplify(points, tolerance)` | `list of Point` | Ramer-Douglas-Peucker: drop the points that move the path by `tolerance` metres or less. |
+| `simplify(points, tolerance)` | `list of Point` | Ramer-Douglas-Peucker on the sphere: drop the points that move the path by `tolerance` metres or less. |
 | `pointInPolygon(p, polygon)` | `bool` | Whether a point lies inside a polygon. |
 | `resample(points, spacing)` | `list of Point` | Resample a path to one point every `spacing` metres. |
 | `interpolate(a, b, fraction)` | `Point` | A point a fraction of the way along the line between two others. |
@@ -175,7 +179,7 @@ What a recorded path adds up to.
 |---|---|---|
 | `statsOf(points)` | `TrackStats` | Measure a recorded path. |
 | `statsWith(points, climbThreshold, movingSpeed)` | `TrackStats` | Measure a recorded path, with the thresholds stated. |
-| `secondsBetween(from, to2)` | `int` | Seconds between two RFC 3339 timestamps, or `-1` when either does not parse. |
+| `secondsBetween(from, to2)` | `int` | Seconds between two RFC 3339 timestamps, negative when `to2` is earlier; raises when either does not parse. |
 
 ## Geohashes
 
@@ -239,6 +243,8 @@ See [KML and KMZ](../guide/kml.md).
 |---|---|---|
 | `KML_NAMESPACE` | `"http://www.opengis.net/kml/2.2"` | The namespace a KML 2.2 document declares. |
 | `KMZ_ENTRY` | `"doc.kml"` | The entry a KMZ archive keeps its document in. |
+| `MAX_KMZ_ENTRY_BYTES` | `16777216` | The most one KMZ entry may inflate to before `readKmz` refuses: 16 MiB. |
+| `MAX_KMZ_TOTAL_BYTES` | `67108864` | The most a whole KMZ may inflate to, summed over its entries, before `readKmz` refuses: 64 MiB. |
 
 | Signature | Returns | Does |
 |---|---|---|
