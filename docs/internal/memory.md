@@ -3,9 +3,13 @@
 
 # Memory
 
-Why the XML readers scan instead of parsing. The figures are from one host,
-reading a 10 MB GPX of 50,000 track points, each with an elevation, a
-timestamp and a Garmin extensions block.
+Why the XML readers scan instead of parsing, and why the GPX reader now
+decodes first. The figures are from one host, reading a 10 MB GPX of 50,000
+track points, each with an elevation, a timestamp and a Garmin extensions
+block. The tables before [Measured again](#measured-again) are from the
+interpreter the scanner was designed on; that section has the current
+figures, which reverse the premise. [GPX: tree first](#gpx-tree-first) is the
+design that followed. KML and GML still scan.
 
 ## The problem
 
@@ -43,12 +47,25 @@ this size.
   interpreted walk with this took the read from **19 s to 1.5 s** per 5,700
   points.
 
+- Close tags are found with one native search for `</name`, plus searches for
+  `<name` and `<!` bounded by that close tag. Only a same-name nested element
+  or a comment/CDATA section inside the element takes the walk in
+  `nestedClose`, which keeps each event kind's next position and searches
+  again only once passed, so it is linear in the element. A name probe that
+  hits a longer name (`<trk` in `<trkpt`) switches to one native search per
+  spelling that can end the name (`exactTagAt`) instead of a step per hit.
+  GPX points never contain their own name, so they are read as leaves
+  (`leafClose`): the close search stops at the next `<trkpt`, and an unclosed
+  point costs no more than a closed one.
+
 The scanner finds boundaries; the interpreter's parser reads fields. Entity
 decoding, CDATA and attribute quoting for the structural elements are the
 scanner's own (`xmlUnescape`, `nodeText`, `nodeAttr`), covering the same
 ground as `xml.decode` with one deliberate difference: an unknown entity is
 left standing rather than raising, because a GIS exporter writing `&deg;`
-should not make a track log unreadable.
+should not make a track log unreadable. `decodeLeaf` keeps the same rule for
+leaves: when `xml.decode` rejects one, it retries with every unknown `&...;`
+escaped (`escapeUnknownEntities`).
 
 ## What it costs
 
@@ -58,7 +75,7 @@ should not make a track log unreadable.
 | this deck, 1.2 MB / 5,700 points | 1.5 s | 0.17 GB |
 | `xml.decode` tree of the same 10 MB, nothing read out | 0.7 s | 1.34 GB |
 
-**The scan is slower in wall-clock time than building a tree.** It buys
+**The scan is slower in wall-clock time than building a tree.** It bought
 memory proportional to the result rather than to the file: the ceiling moves
 from "the file must fit in memory 130 times over" to "the points must fit". A
 typical GPX of a few thousand points, well under a megabyte, reads in well
@@ -66,15 +83,15 @@ under a second.
 
 ## The remaining cost is value semantics
 
-The 1.10 GB above is not the scanner. It is mostly deep copies of the point
-list, a property of the language rather than of this design.
-
-Jennifer copies a compound value on assignment, on every argument pass and on
-every return. A segment's points are copied out of `readGpxSegment`, again
-into the `Segment` literal, again into the segments list, again into the
-`Track`, again on its return, and again into the document: about seven deep
-copies of 50,000 structs. `GOGC=20` brings 1.23 GB down only to 0.93 GB,
-so this is memory retained by copies, not collectable garbage. `jennifer profile --allocs` names the copies.
+The 1.10 GB above was mostly deep copies of the point list: on that
+interpreter a segment's points were copied out of `readGpxSegment`, into the
+`Segment` literal, into the segments list, into the `Track` and into the
+document. The interpreter now borrows read-only parameters and hands a
+returned value on without a copy, and `jennifer profile --allocs` over a read
+of the 10 MB file shows no list copies at all. What is left is two copies of
+one `Point` per point, inside `withElevation` and `withTime` (`model.j`),
+about 117 MiB each over 50,000 points; they are garbage at once and do not add
+to the peak.
 
 The same trap caught the GeoJSON and GML readers, which first accumulated with
 a merge per feature. Merging copies the whole accumulated list each time, so
@@ -106,15 +123,119 @@ function does not deep-copy it, which is what makes the scanner's shape viable.
 ## Writing
 
 Every writer renders into a `list of string` and joins once; no tree is
-built. 50,000 points render to GPX in about a third of a second.
+built. 50,000 points with elevation and time render to GPX in 1.4 s (3.0 s
+before `decimal()` used `%f|trim=true` instead of a loop per character, and
+before `writeGpxPoint` stopped calling `element()` for absent fields and
+`xmlEscape` for text with nothing to escape).
+
+## Measured again
+
+Interpreter `0.25.0-dev+43.c0cb864`, the same 10 MB / 50,000-point file:
+
+| | Wall | Peak RSS |
+|---|---|---|
+| `xml.decode` on the whole document, reading nothing out | 0.06 s | 84 MB |
+| the same, then walking every `<trkpt>` and parsing its `lat` | 0.16 s | 146 MB |
+| this deck, `openGpx` | 6.0 s | 579 MB |
+| this deck, `openGpx`, 1 MB / 4,829 points | 0.6 s | 79 MB |
+
+`xml.decode` no longer costs 130 times the file: a whole-document tree is now
+smaller and about 40 times faster than the scan. The per-point cost of the
+scan is in the interpreted walk (`readNode`, `endOfOpenTag`) and in
+`decodeLeaf`'s per-leaf `xml.decode`.
+
+## GPX: tree first
+
+`readGpx` and `readGpxBytes` (so `openGpx`, `open` and `readText` for GPX)
+run `xml.decode` on the whole document, a leading byte-order mark stripped.
+`readGpxTree` walks the tree into the `Document`. The scanner path,
+`readGpxScan`, is unchanged and runs when:
+
+- `xml.decode` raises: malformed or truncated markup, an unknown entity
+  (`&deg;`), bytes that are not UTF-8, nesting past 1,000 levels (64 on
+  `jennifer-tiny`), or more than 2,097,152 nodes (262,144 on `jennifer-tiny`;
+  `MaxDecodedNodes` in `jennifer/internal/limits/nesting_*.go`). Elements,
+  attributes and text runs count; the 10 MB file has 600,012, about 12 per
+  point, so `jennifer-tiny` reads files past about 21,000 such points with
+  the scanner;
+- `treeMatchesScan` finds a well-formed construct the scanner reads
+  differently from the tree (below).
+
+Both run before the first point is read. Errors the walk raises (a missing,
+unparseable or out-of-range coordinate or elevation) propagate, with the
+scanner's `kind` and message, in the scanner's order: waypoints, then routes,
+then tracks. Both paths read points through `pointsFrom`.
+
+Why both: `jennifer-tiny` rejects a long track as a decode bomb, and
+`xml.decode` is strict where the scanner reads damage (truncation, an
+unclosed point mid-file, unknown entities, undeclared prefixes).
+
+`treeMatchesScan` sends a decoded document to the scanner when it holds:
+
+| Construct | What the scanner does differently |
+|---|---|
+| `<!DOCTYPE` | ends it at the first `>`, inside an internal subset |
+| `<!-->`, `<!--->` | finds the comment's `-->` inside its own `<!--` |
+| `&#+65;`, `&#x+41;` | leaves the reference standing; `xml.decode` reads the sign |
+| a processing instruction inside the root, or a second one | does not skip it in close searches |
+| `<![CDATA[` inside a comment | splits field text at it |
+| an element 102 levels deep (`DEEP_PATH`) | takes 102 nested elements of one name as unclosed (`nestedClose`) |
+| a point holding an element of its written name, or a point name outside a point position | ends the point at the inner open tag (`leafClose`) |
+| points of one kind under two written names | nothing; the point check needs one name |
+| a header, route or track field with element children, or `<![CDATA[` in its text | keeps the children's text (`textOnly`); splits at the opener (`cdataText`) |
+| `xmlns` on a `<rte>`, `<trk>` or `<trkseg>` | decodes points against the root's bindings only |
+
+The point check counts open tags of the written name in the text
+(`strings.count`, six name endings) against the points the tree holds, so an
+occurrence in a comment also sends the document to the scanner. `creator` is
+read from the bytes with the scanner's `nodeAttr`: `xml.decode` normalises
+tabs and newlines in attribute values to spaces and prefers `creator` to
+`x:creator`.
+
+Points are read per parent, not per point. `treePoints` runs one native
+`xml.findAll` per field (`*:trkpt/*:ele[1]` lists the first `<ele>` of each
+point that has one); when every point or none holds each field, the lists
+line up and `pointsFrom` reads each point by index. Otherwise each point is
+read with `gpxPoint`, a lookup per field. A point starts as a copy of a blank
+`Point` (a struct literal costs more) and is filled in place;
+`withElevation` and `withTime` each copied it. Coordinates that match
+`NUMBER_PATTERN` as written are converted in one `try`; anything else goes
+through `number()`, which raises the deck's error.
+
+Interpreter `0.25.0-dev+43.c0cb864`, `openGpx` only:
+
+| | Go wall | Go peak RSS | tiny wall | tiny peak RSS |
+|---|---|---|---|---|
+| scanner, 10 MB / 50,000 points | 6.1 s | 554 MB | 29.1 s | 1.54 GB |
+| tree, 10 MB / 50,000 points | 1.4 s | 661 MB | 29.3 s (estimate over the cap, scanner) | 1.56 GB |
+| scanner, 1 MB / 4,829 points | 0.63 s | 75 MB | 0.96 s | 172 MB |
+| tree, 1 MB / 4,829 points | 0.14 s | 97 MB | 0.54 s | 190 MB |
+
+On `jennifer-tiny`, `decodeFits` estimates the nodes before decoding
+(`decodeNodes`: elements are `<` less `</`, `<?`, `<!`; attributes `="` and
+`='`; text runs `>` not followed by `<`; 600,015 against 600,012 decoded for the
+10 MB file) and sends a document over `TINY_DECODE_NODES` (2^18) to the
+scanner. Without it the decode failed after the full parse and the 10 MB file
+took 31.7 s. A wrong estimate only changes the path.
+
+Of the 1.4 s, `xml.decode` takes 0.06 s and the checks about 0.1 s. The rest
+is the interpreter: per point about 25 statements and 15 native calls, a
+`Point` copy and append (3 µs), and the copies that put a 50,000-point list
+into a `Segment`, the segment list into a `Track` and the tracks into the
+`Document` (about 0.1 s each). Peak RSS is 107 MB above the scanner's: the
+tree (84 MB on its own) stays live while the points are built.
+
+Parity is tested in `gpx_test.j`: `testReadGpxTreeMatchesScanOnEveryFuzzInput`
+rebuilds the GPX inputs of `tools/fuzz.j` and compares both readers on each
+one the tree reader takes, and one test per row of the table above asserts
+the scanner reads it.
 
 ## If this needs to be faster
 
 In rough order of expected return:
 
-1. **Fewer copies on the way in.** A reader appending into one flat list and
-   recording segment boundaries as indices, converting to `Segment`s once at
-   the end, would cut most of the seven copies.
+1. **Decode the whole document in KML and GML**, as GPX does
+   ([GPX: tree first](#gpx-tree-first)), with the scanner as fallback.
 2. **A streaming reader.** `readGpx` necessarily materialises a whole
    `Document`. An API handing each point to a callback as it is read would let
    a caller measure a 100 MB track in constant memory. The scanner already

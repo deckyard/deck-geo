@@ -259,3 +259,14 @@ func testKmzEntryIndexFallsBackToARootKmlThenAnyKml() {
     testing.assertEqual(kmzEntryIndex([$image, $nested]), 1);
     testing.assertEqual(kmzEntryIndex([$image]), -1);
 }
+
+func testOpenSkipsAByteOrderMarkInGeojson() {
+    # RFC 8259 lets a reader ignore the mark; json.decode rejects it
+    def dir as string init fs.makeTempDir();
+    defer fs.removeAll($dir);
+    def text as string init "﻿\{\"type\":\"Point\",\"coordinates\":[2,1]\}";
+    def target as string init path.join($dir, "bom.geojson");
+    fs.writeString($target, $text);
+    testing.assertEqual(open($target).waypoints[0].lat, 1.0);
+    testing.assertEqual(readText($text, "geojson").waypoints[0].lon, 2.0);
+}

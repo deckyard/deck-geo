@@ -59,7 +59,8 @@ requires.
 Writers produce UTF-8. They drop the characters XML 1.0 cannot hold (the C0
 controls other than tab, line feed and carriage return, and U+FFFE and U+FFFF),
 because no escape can carry them and a strict parser rejects the whole file
-over one.
+over one. A carriage return is written as `&#13;`, since a parser folds a raw CR
+into LF.
 
 ## What each format holds
 
@@ -70,7 +71,7 @@ What a format cannot hold is lost when a document passes through it.
 | Document name | yes | yes | **no** | yes |
 | Waypoints | yes | yes | yes | yes |
 | Routes, kept apart from tracks | yes | **no** | **no** | **no** |
-| Multi-segment tracks | yes | yes | yes | yes |
+| Multi-segment tracks | yes | **split** | yes | **split** |
 | Time per point | yes | **no** | **no** | **no** |
 | Elevation per point | yes | yes | yes | read only |
 | Waypoint name | yes | yes | yes | yes |
@@ -88,7 +89,9 @@ What a format cannot hold is lost when a document passes through it.
 
 Segment breaks survive all four: a multi-segment track is written as a KML
 `MultiGeometry`, a GeoJSON `MultiLineString`, or one GML `featureMember` per
-segment.
+segment. Only GPX and GeoJSON read it back as one track: KML and GML return
+one track per segment, each with the track's name, because neither can say
+that two lines are runs of one recording.
 
 ## Writing
 
@@ -107,7 +110,8 @@ The waypoint is written as:
 ```
 
 with no empty `<name>`, no `<ele>` and no `<metadata>` block, so a document
-does not grow on a round trip.
+does not grow on a round trip. The XML writers write text fields trimmed,
+as the readers read them.
 
 Coordinates are written with up to `COORD_PLACES` (7) decimal places, about a
 centimetre, with trailing zeros removed: `47.2692` stays `47.2692`. Elevations

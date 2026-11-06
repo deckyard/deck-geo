@@ -41,7 +41,7 @@ export func formatOf(target as string) {
  * Read a file, in whichever format its extension names.
  *
  * XML formats honour a single-byte `encoding` in the declaration; GeoJSON is
- * read as UTF-8.
+ * read as UTF-8. A leading UTF-8 byte-order mark is skipped in every format.
  *
  * @param target {string} the path to read
  * @return {Document} what the file held
@@ -60,9 +60,14 @@ export func open(target as string) {
         return readKmz(readFileBytes($target));
     }
     if ($format == "geojson") {
-        # RFC 7946 is UTF-8 only, so there is no declaration to honour.
+        # RFC 7946 is UTF-8 only, so there is no declaration to honour. A
+        # byte-order mark is skipped, as RFC 8259 allows; json.decode rejects it.
         def raw as bytes init readFileBytes($target);
-        return readGeojson(byteText($raw, 0, len($raw)));
+        def start as int init 0;
+        if (matchesAt($raw, 0, UTF8_BOM)) {
+            $start = len(UTF8_BOM);
+        }
+        return readGeojson(byteText($raw, $start, len($raw)));
     }
     def src as bytes init toUtf8(readFileBytes($target));
     if ($format == "gpx") {
@@ -141,6 +146,10 @@ export func readText(text as string, format as string) {
         return readKml($text);
     }
     if ($format == "geojson") {
+        # A file read with fs.readString keeps its byte-order mark.
+        if (strings.startsWith($text, "\uFEFF")) {
+            return readGeojson(strings.substring($text, 1, len($text)));
+        }
         return readGeojson($text);
     }
     if ($format == "gml") {

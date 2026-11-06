@@ -106,11 +106,18 @@ func testDecimalKeepsEveryPlaceThatMatters() {
     testing.assertEqual(decimal(47.26909141, COORD_PLACES), "47.2690914");
 }
 
-func testTrimTrailing() {
-    testing.assertEqual(trimTrailing("100", "0"), "1");
-    testing.assertEqual(trimTrailing("1.", "."), "1");
-    testing.assertEqual(trimTrailing("000", "0"), "");
-    testing.assertEqual(trimTrailing("abc", "0"), "abc");
+func testDecimalTrimsOnlyFractionZeros() {
+    # the zeros of an integer part are digits, not padding
+    testing.assertEqual(decimal(100.0, COORD_PLACES), "100");
+    testing.assertEqual(decimal(-180.0, COORD_PLACES), "-180");
+    testing.assertEqual(decimal(10.5, ELEVATION_PLACES), "10.5");
+}
+
+func testDecimalWritesNegativeZeroAsZeroAtNoPlaces() {
+    # -0.4 rounds to -0 at zero places; "%f|prec=0" has no "." to trim, and
+    # the old check after the trim never saw it
+    testing.assertEqual(decimal(-0.4, 0), "0");
+    testing.assertEqual(decimal(-1.4, 0), "-1");
 }
 
 func testNumberParsesAndReports() {
@@ -165,6 +172,21 @@ func testNormalizeBearingWraps() {
     testing.assertEqual(normalizeBearing(-450.0), 270.0);
 }
 
+func testNormalizeBearingWrapsAnAngleTooLargeForFloor() {
+    # 2^80 mod 360: 2^80 = 0 mod 8; 2^12 = 4096 = 1 mod 45, so 2^80 = 2^8 = 256 = 31
+    # mod 45. The x in 0..359 with x = 0 mod 8 and x = 31 mod 45 is 256.
+    def big as float init math.pow(2.0, 80.0);
+    testing.assertEqual(normalizeBearing($big), 256.0);
+    testing.assertEqual(normalizeBearing(-$big), 104.0);
+    # 360 * 2^60 is a whole number of turns
+    testing.assertEqual(normalizeBearing(360.0 * math.pow(2.0, 60.0)), 0.0);
+    def huge as float init normalizeBearing(1.7e308);
+    testing.assertTrue($huge >= 0.0 and $huge < 360.0);
+    # just below the switch-over, the floor path still applies: 2^52 = 2^4 * 2^48;
+    # 2^48 = 2^12^4 = 1 mod 45 and 2^52 = 0 mod 8, so 2^52 = 16 mod 45 -> 16
+    testing.assertEqual(normalizeBearing(math.pow(2.0, 52.0)), 16.0);
+}
+
 func testNormalizeLongitudeWraps() {
     testing.assertEqual(normalizeLongitude(11.4041), 11.4041);
     testing.assertEqual(normalizeLongitude(-179.0), -179.0);
@@ -210,10 +232,49 @@ func testNumberRejectsADigitSeparator() {
     testing.assertThrows("failOnADigitSeparator", ERROR_KIND);
 }
 
+func failOnAHexFloat() {
+    number("0x1p4", "a latitude");
+}
+
+func failOnAHexInteger() {
+    number("0x10", "a latitude");
+}
+
+func failOnInfinity() {
+    number("Inf", "a latitude");
+}
+
+func failOnAnExponentWithNoDigits() {
+    number("1e", "a latitude");
+}
+
+func testNumberRejectsJenniferOnlyLiterals() {
+    # convert.toFloat reads "0x1p4" as 16 and "0x10" as 16; xsd:double has no
+    # hexadecimal form
+    testing.assertThrows("failOnAHexFloat", ERROR_KIND);
+    testing.assertThrows("failOnAHexInteger", ERROR_KIND);
+    testing.assertThrows("failOnInfinity", ERROR_KIND);
+    testing.assertThrows("failOnAnExponentWithNoDigits", ERROR_KIND);
+}
+
+func testNumberReadsEveryXsdDoubleSpelling() {
+    # xsd:double: optional sign, optional fraction, optional exponent
+    testing.assertEqual(number("+1e1", "x"), 10.0);
+    testing.assertEqual(number(".5", "x"), 0.5);
+    testing.assertEqual(number("-2.", "x"), -2.0);
+    testing.assertEqual(number("1E-2", "x"), 0.01);
+}
+
 func testXmlEscapeDropsWhatXmlCannotHold() {
     testing.assertEqual(xmlEscape("a\u0001b\u000Bc\u001Fd"), "abcd");
     testing.assertEqual(xmlEscape("x\uFFFEy\uFFFF"), "xy");
     # tab, line feed and carriage return are legal and stay
-    testing.assertEqual(xmlEscape("a\tb\nc\rd"), "a\tb\nc\rd");
+    testing.assertEqual(xmlEscape("a\tb\nc\rd"), "a\tb\nc&#13;d");
     testing.assertEqual(xmlEscape("Ca\u00f1on & <Rim>"), "Ca\u00f1on &amp; &lt;Rim&gt;");
+}
+
+func testXmlEscapeWritesACarriageReturnAsAReference() {
+    # XML 1.0 2.11: a parser turns CR LF and lone CR into LF, so a raw CR is lost
+    testing.assertEqual(xmlEscape("a\r\nb"), "a&#13;\nb");
+    testing.assertEqual(xmlUnescape(xmlEscape("a\r\nb")), "a\r\nb");
 }

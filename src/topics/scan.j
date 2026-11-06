@@ -113,6 +113,25 @@ func isNameEnd(b as int) {
  *   }
  */
 func nextChild(src as bytes, from as int, limit as int) {
+    return nextChildOf($src, $from, $limit, "");
+}
+
+/**
+ * {@link nextChild}, reading children with one local name as leaves.
+ *
+ * A leaf (a GPX point) never contains its own name, so a second open tag of
+ * the name before a close tag means the first is unclosed. Its close is
+ * searched for only up to that next open tag ({@link leafClose}), which keeps
+ * a run of unclosed points linear; nesting-aware search costs a walk to the
+ * end of the parent for each.
+ *
+ * @param src {bytes} the whole document
+ * @param from {int} the offset to start at
+ * @param limit {int} the offset to stop at
+ * @param leaf {string} the local name to read as a leaf, or `""` for none
+ * @return {Node} the next child, or a node with `start` `-1` when there is none
+ */
+func nextChildOf(src as bytes, from as int, limit as int, leaf as string) {
     def at as int init $from;
     while ($at < $limit) {
         def lt as int init indexOfByte($src, LT_PROBE, $at, $limit);
@@ -123,7 +142,7 @@ func nextChild(src as bytes, from as int, limit as int) {
         if ($skip >= 0) {
             $at = $skip;
         } else {
-            def node as Node init readNode($src, $lt, $limit);
+            def node as Node init readNodeOf($src, $lt, $limit, $leaf);
             if ($node.start < 0) {
                 return missingNode();
             }
@@ -210,6 +229,19 @@ func skipNonElement(src as bytes, lt as int, limit as int) {
  * @return {Node} the element, or a node with `start` `-1` when its open tag is unterminated
  */
 func readNode(src as bytes, lt as int, limit as int) {
+    return readNodeOf($src, $lt, $limit, "");
+}
+
+/**
+ * {@link readNode}, reading an element with one local name as a leaf.
+ *
+ * @param src {bytes} the whole document
+ * @param lt {int} the offset of the opening `<`
+ * @param limit {int} the offset to stop at
+ * @param leaf {string} the local name to read as a leaf ({@link leafClose}), or `""`
+ * @return {Node} the element, or a node with `start` `-1` when its open tag is unterminated
+ */
+func readNodeOf(src as bytes, lt as int, limit as int, leaf as string) {
     def nameEnd as int init $lt + 1;
     while ($nameEnd < $limit and not isNameEnd($src[$nameEnd])) {
         $nameEnd = $nameEnd + 1;
@@ -237,7 +269,12 @@ func readNode(src as bytes, lt as int, limit as int) {
             closed: true
         };
     }
-    def innerEnd as int init matchingClose($src, $name, $openEnd, $limit);
+    def innerEnd as int init -1;
+    if ($leaf != "" and localName($name) == $leaf) {
+        $innerEnd = leafClose($src, $name, $openEnd, $limit);
+    } else {
+        $innerEnd = matchingClose($src, $name, $openEnd, $limit);
+    }
     if ($innerEnd < 0) {
         # No closing tag: a file whose write was cut short - a recorder that
         # lost power mid-track. The element is taken to run to the end of what
@@ -252,11 +289,12 @@ func readNode(src as bytes, lt as int, limit as int) {
             closed: false
         };
     }
-    def closeLen as int init len($name) + 3;
+    # `</name >` is legal: the element ends past the `>`, not at len + 3.
+    def closeEnd as int init indexOfByte($src, GT_PROBE, $innerEnd + len($name) + 2, $limit);
     return Node{
         name: $name,
         start: $lt,
-        end: $innerEnd + $closeLen,
+        end: $closeEnd + 1,
         openEnd: $openEnd,
         innerEnd: $innerEnd,
         closed: true
@@ -276,25 +314,39 @@ func readNode(src as bytes, lt as int, limit as int) {
  * @return {int} the offset just past the `>`, or `-1` when there is none
  */
 func endOfOpenTag(src as bytes, from as int, limit as int) {
+    def gt as int init indexOfByte($src, GT_PROBE, $from, $limit);
+    if ($gt < 0) {
+        return -1;
+    }
+    # The `>` and the next single quote are kept between attributes and
+    # searched again only once passed: most tags quote with `"` only, so each
+    # attribute costs two native searches, its opening and its closing quote.
+    def single as int init indexOfByte($src, SQUOTE_PROBE, $from, $gt);
     def at as int init $from;
-    while ($at < $limit) {
-        def gt as int init indexOfByte($src, GT_PROBE, $at, $limit);
-        if ($gt < 0) {
-            return -1;
+    while (true) {
+        if ($single >= 0 and $single < $at) {
+            $single = indexOfByte($src, SQUOTE_PROBE, $at, $gt);
         }
-        def quote as int init nextQuote($src, $at, $gt);
+        def quote as int init indexOfByte($src, DQUOTE_PROBE, $at, $gt);
+        if ($quote < 0 or ($single >= 0 and $single < $quote)) {
+            $quote = $single;
+        }
         if ($quote < 0) {
             return $gt + 1;
         }
-        # The `>` is inside an attribute value; resume past the closing quote.
-        # Both branches pass the probe constant straight to indexOfByte: binding
-        # a `def const` of a compound type to a local deep-copies it, and this
-        # runs twice per element.
         def close as int init closingQuote($src, $quote, $limit);
         if ($close < 0) {
             return -1;
         }
         $at = $close + 1;
+        if ($at > $gt) {
+            # The `>` was inside the value; find the next one.
+            $gt = indexOfByte($src, GT_PROBE, $at, $limit);
+            if ($gt < 0) {
+                return -1;
+            }
+            $single = indexOfByte($src, SQUOTE_PROBE, $at, $gt);
+        }
     }
     return -1;
 }
@@ -315,27 +367,9 @@ func closingQuote(src as bytes, quote as int, limit as int) {
 }
 
 /**
- * The offset of the first quote character before a limit.
- *
- * @param src {bytes} the buffer to search
- * @param from {int} the offset to start at
- * @param limit {int} the offset to stop at
- * @return {int} the offset of the nearer quote, or `-1` when there is none
- */
-func nextQuote(src as bytes, from as int, limit as int) {
-    def double as int init indexOfByte($src, DQUOTE_PROBE, $from, $limit);
-    def single as int init indexOfByte($src, SQUOTE_PROBE, $from, $limit);
-    if ($double < 0) {
-        return $single;
-    }
-    if ($single < 0) {
-        return $double;
-    }
-    return math.min($double, $single);
-}
-
-/**
  * The offset of the `</name>` that closes an element, counting nesting.
+ *
+ * Tags inside comments and CDATA sections are not markup and are skipped.
  *
  * @param src {bytes} the whole document
  * @param name {string} the tag as written
@@ -351,18 +385,47 @@ func matchingClose(src as bytes, name as string, from as int, limit as int) {
         return -1;
     }
     # The common case by far: no element of the same name opens inside this
-    # one, so the first close tag is the matching one and the whole search was
-    # two native scans. Only a nested name - a KML <Folder> inside a
-    # <Folder> - pays for the walk below.
-    #
-    # The boundary test is what makes this pay: `<trk` occurs inside every one
-    # of a track's `<trkpt>`s, so a bare substring search would send every GPX
-    # track down the slow path.
-    def nested as int init openTagAt($src, $openProbe, $from, $close);
-    if ($nested < 0) {
+    # one and no comment or CDATA section hides a tag, so the first close tag
+    # is the matching one and the whole search was three native scans, each
+    # bounded by that close tag. Only a nested name - a KML <Folder> inside a
+    # <Folder> - or a `<!` pays for the walk below.
+    if (indexOfByte($src, MARKUP_PROBE, $from, $close) < 0 and
+        openTagAt($src, $openProbe, $from, $close) < 0) {
         return $close;
     }
     return nestedClose($src, $openProbe, $closeProbe, $from, $limit);
+}
+
+/**
+ * The offset of the `</name>` that closes an element that cannot contain its
+ * own name.
+ *
+ * The close tag is searched for only up to the next open tag of the name: one
+ * found there is the next element, and this one is unclosed. Comments and
+ * CDATA sections in that stretch take {@link nestedClose}, which skips them.
+ *
+ * @param src {bytes} the whole document
+ * @param name {string} the tag as written
+ * @param from {int} the offset just past the open tag
+ * @param limit {int} the offset to stop at
+ * @return {int} the offset of the closing `<`, or `-1` when it is missing
+ */
+func leafClose(src as bytes, name as string, from as int, limit as int) {
+    def openProbe as bytes init probeOf("<" + $name);
+    def closeProbe as bytes init probeOf("</" + $name);
+    def bound as int init openTagAt($src, $openProbe, $from, $limit);
+    if ($bound < 0) {
+        $bound = $limit;
+    }
+    def close as int init closeTagAt($src, $closeProbe, $from, $bound);
+    def searched as int init $bound;
+    if ($close >= 0) {
+        $searched = $close;
+    }
+    if (indexOfByte($src, MARKUP_PROBE, $from, $searched) >= 0) {
+        return nestedClose($src, $openProbe, $closeProbe, $from, $limit);
+    }
+    return $close;
 }
 
 /**
@@ -375,18 +438,13 @@ func matchingClose(src as bytes, name as string, from as int, limit as int) {
  * @return {int} the offset of the `<`, or `-1` when there is none
  */
 func closeTagAt(src as bytes, closeProbe as bytes, from as int, limit as int) {
-    def at as int init $from;
-    while ($at < $limit) {
-        def found as int init indexOfByte($src, $closeProbe, $at, $limit);
-        if ($found < 0) {
-            return -1;
-        }
-        if (isCloseEnd($src, $found + len($closeProbe), $limit)) {
-            return $found;
-        }
-        $at = $found + 1;
+    def found as int init indexOfByte($src, $closeProbe, $from, $limit);
+    if ($found < 0 or isCloseEnd($src, $found + len($closeProbe), $limit)) {
+        return $found;
     }
-    return -1;
+    # `</trk` is a prefix of every `</trkpt`: search for the spellings that end
+    # the name instead of stepping through one false hit per point.
+    return exactTagAt($src, $closeProbe, true, $found + 1, $limit);
 }
 
 /**
@@ -399,23 +457,85 @@ func closeTagAt(src as bytes, closeProbe as bytes, from as int, limit as int) {
  * @return {int} the offset of the `<`, or `-1` when there is none
  */
 func openTagAt(src as bytes, openProbe as bytes, from as int, limit as int) {
-    def at as int init $from;
-    while ($at < $limit) {
-        def found as int init indexOfByte($src, $openProbe, $at, $limit);
-        if ($found < 0) {
-            return -1;
-        }
-        def after as int init $found + len($openProbe);
-        if ($after >= $limit or isNameEnd($src[$after])) {
-            return $found;
-        }
-        $at = $found + 1;
+    def found as int init indexOfByte($src, $openProbe, $from, $limit);
+    if ($found < 0) {
+        return -1;
     }
-    return -1;
+    def after as int init $found + len($openProbe);
+    if ($after >= $limit or isNameEnd($src[$after])) {
+        return $found;
+    }
+    # `<trk` is a prefix of every `<trkpt>`, `<gpx` of every `<gpxtpx:...>`.
+    return exactTagAt($src, $openProbe, false, $found + 1, $limit);
 }
 
 /**
- * The matching close tag of an element that nests its own name.
+ * The bytes that can follow a tag name: `>`, `/` and the four XML spaces.
+ * One-byte buffers, appended to a name probe by {@link exactTagAt}.
+ */
+def const NAME_ENDS as list of bytes init [
+    convert.bytesFromString(">", "utf-8"),
+    convert.bytesFromString("/", "utf-8"),
+    convert.bytesFromString(" ", "utf-8"),
+    convert.bytesFromString("\n", "utf-8"),
+    convert.bytesFromString("\t", "utf-8"),
+    convert.bytesFromString("\r", "utf-8")
+];
+
+/** `<!`, which opens a comment, a CDATA section or a declaration. */
+def const MARKUP_PROBE as bytes init convert.bytesFromString("<!", "utf-8");
+
+/**
+ * The first tag whose name is exactly a probe's, by one native search per
+ * spelling that can end the name.
+ *
+ * Five or six native scans replace an interpreted step per false prefix hit;
+ * each search is bounded by the best hit so far.
+ *
+ * @param src {bytes} the whole document
+ * @param probe {bytes} `<name` or `</name`
+ * @param closing {bool} whether `probe` is a close tag, which takes no `/`
+ *   and must reach its `>` through whitespace only
+ * @param from {int} the offset to start at
+ * @param limit {int} the offset to stop at
+ * @return {int} the offset of the `<`, or `-1` when there is none
+ */
+func exactTagAt(src as bytes, probe as bytes, closing as bool, from as int, limit as int) {
+    def best as int init -1;
+    for (def i as int init 0; $i < len(NAME_ENDS); $i = $i + 1) {
+        if ($closing and $i == 1) {
+            continue;
+        }
+        def bound as int init $limit;
+        if ($best >= 0) {
+            $bound = $best;
+        }
+        def needle as bytes init binary.concat($probe, NAME_ENDS[$i]);
+        def hit as int init indexOfByte($src, $needle, $from, $bound);
+        # `</trk \n x` is not a close tag; whitespace spellings are rare, so
+        # stepping through them costs nothing on real files.
+        while ($closing and $i > 1 and $hit >= 0 and
+            not isCloseEnd($src, $hit + len($probe), $limit)) {
+            $hit = indexOfByte($src, $needle, $hit + 1, $bound);
+        }
+        if ($hit >= 0) {
+            $best = $hit;
+        }
+    }
+    return $best;
+}
+
+/**
+ * The matching close tag of an element that nests its own name, or whose
+ * content holds a comment or CDATA section.
+ *
+ * Walks the events that can change the answer - an open tag of the name, a
+ * close tag of the name, a `<!` - in document order. Each kind's next
+ * position is kept between passes and searched again only once the walk has
+ * passed it, and every search stops at the current close tag, so the whole
+ * walk is linear in the element's size. Same-name nesting deeper than
+ * `MAX_NESTING` cannot be read and is treated as unclosed; that also caps
+ * what a run of unclosed elements costs.
  *
  * @param src {bytes} the whole document
  * @param openProbe {bytes} `<` plus the tag name, as bytes
@@ -427,56 +547,103 @@ func openTagAt(src as bytes, openProbe as bytes, from as int, limit as int) {
 func nestedClose(src as bytes, openProbe as bytes, closeProbe as bytes, from as int, limit as int) {
     def depth as int init 1;
     def at as int init $from;
-    # Only a `<` that starts this element's name can change the depth, so jump
-    # between the next open and the next close probe instead of visiting every
-    # tag in between.
-    def open as int init indexOfByte($src, $openProbe, $at, $limit);
-    while ($at < $limit) {
-        if ($open >= 0 and $open < $at) {
-            $open = indexOfByte($src, $openProbe, $at, $limit);
+    def close as int init -1;
+    # Each cursor is a position, or -1 with `seen` the offset up to which the
+    # range from `at` is known to hold no such event.
+    def open as int init -1;
+    def openSeen as int init $from;
+    def markup as int init -1;
+    def markupSeen as int init $from;
+    while (true) {
+        if ($close < $at) {
+            $close = closeTagAt($src, $closeProbe, $at, $limit);
+            if ($close < 0) {
+                return -1;
+            }
         }
-        def lt as int init indexOfByte($src, $closeProbe, $at, $limit);
-        if ($lt < 0 or ($open >= 0 and $open < $lt)) {
-            $lt = $open;
+        def openFrom as int init searchFrom($open, $openSeen, $at, $close);
+        if ($openFrom >= 0) {
+            $open = openTagAt($src, $openProbe, $openFrom, $close);
+            $openSeen = $close;
         }
-        if ($lt < 0) {
+        def markupFrom as int init searchFrom($markup, $markupSeen, $at, $close);
+        if ($markupFrom >= 0) {
+            $markup = indexOfByte($src, MARKUP_PROBE, $markupFrom, $close);
+            $markupSeen = $close;
+        }
+        if ($markup >= 0 and ($open < 0 or $markup < $open)) {
+            $at = skipMarkup($src, $markup, $limit);
+        } elseif ($open >= 0) {
+            if (not isSelfClosing($src, $open + len($openProbe), $limit)) {
+                $depth = $depth + 1;
+            }
+            $at = $open + 1;
+        } else {
+            $depth = $depth - 1;
+            if ($depth == 0) {
+                return $close;
+            }
+            $at = $close + 1;
+        }
+        if ($depth > MAX_NESTING + 1) {
             return -1;
         }
-        $depth = $depth + depthChange($src, $lt, $openProbe, $closeProbe, $limit);
-        if ($depth == 0) {
-            return $lt;
-        }
-        $at = $lt + 1;
     }
     return -1;
 }
 
 /**
- * What one `<` does to the nesting depth of a named element.
+ * Where a cursor of {@link nestedClose} must search again from.
  *
- * @param src {bytes} the whole document
- * @param lt {int} the offset of the `<`
- * @param openProbe {bytes} `<` plus the tag name, as bytes
- * @param closeProbe {bytes} `</` plus the tag name, as bytes
- * @param limit {int} the offset to stop at
- * @return {int} `1` for a nested open tag, `-1` for a close tag, `0` otherwise
+ * @param hit {int} the cursor's position, or `-1` for none found
+ * @param seen {int} the offset its last search reached
+ * @param at {int} the walk's position
+ * @param bound {int} the offset the next search would stop at
+ * @return {int} the offset to search from, or `-1` when the cursor is current
  */
-func depthChange(src as bytes, lt as int, openProbe as bytes, closeProbe as bytes, limit as int) {
-    if (matchesAt($src, $lt, $closeProbe) and isCloseEnd($src, $lt + len($closeProbe), $limit)) {
+func searchFrom(hit as int, seen as int, at as int, bound as int) {
+    if ($hit >= $at) {
         return -1;
     }
-    if (not matchesAt($src, $lt, $openProbe)) {
-        return 0;
+    if ($hit >= 0) {
+        return $at;
     }
-    def after as int init $lt + len($openProbe);
-    if ($after < $limit and not isNameEnd($src[$after])) {
-        return 0;
+    if ($seen >= $bound) {
+        return -1;
     }
+    return math.max($at, $seen);
+}
+
+/**
+ * The offset past a comment or CDATA section at a `<!`.
+ *
+ * @param src {bytes} the whole document
+ * @param lt {int} the offset of the `<!`
+ * @param limit {int} the offset to stop at
+ * @return {int} the offset past its terminator, `limit` when it is
+ *   unterminated, or `lt + 2` for any other `<!` declaration
+ */
+func skipMarkup(src as bytes, lt as int, limit as int) {
+    if (matchesAt($src, $lt, COMMENT_PROBE)) {
+        return skipPast($src, $lt + 4, "-->", $limit);
+    }
+    if (matchesAt($src, $lt, CDATA_PROBE)) {
+        return skipPast($src, $lt + 9, "]]>", $limit);
+    }
+    return $lt + 2;
+}
+
+/**
+ * Whether the open tag whose name ends at an offset closes itself (`/>`).
+ *
+ * @param src {bytes} the whole document
+ * @param after {int} the offset just past the tag name
+ * @param limit {int} the offset to stop at
+ * @return {bool} whether the tag ends in `/>`; `false` for a truncated tag
+ */
+func isSelfClosing(src as bytes, after as int, limit as int) {
     def openEnd as int init endOfOpenTag($src, $after, $limit);
-    if ($openEnd > 1 and $src[$openEnd - 2] == SLASH) {
-        return 0;
-    }
-    return 1;
+    return $openEnd > 1 and $src[$openEnd - 2] == SLASH;
 }
 
 /**
@@ -1015,7 +1182,9 @@ func childText(src as bytes, nodes as list of Node, name as string) {
  * file that uses a prefix it never declares is damage, read anyway: the
  * fragment is decoded a second time with every prefix it uses bound to a
  * stand-in URI. Leaves are matched on their local part, so the URI is never
- * looked at, and well-formed files never pay for the second decode.
+ * looked at, and well-formed files never pay for the second decode. The same
+ * retry keeps an unknown entity (`&deg;`) as written, as {@link xmlUnescape}
+ * does for structural text, where `xml.decode` would raise.
  *
  * @param src {bytes} the whole document
  * @param node {Node} the element to decode
@@ -1031,12 +1200,64 @@ func decodeLeaf(src as bytes, node as Node, ns as map of string to string) {
         # An undeclared prefix, most likely; retried below with stand-ins.
     }
     def tree as xml.Value init xml.element("empty");
+    def repaired as string init escapeUnknownEntities($text);
     try {
-        $tree = xml.decode($text, withStandIns($text, $ns));
+        $tree = xml.decode($repaired, withStandIns($repaired, $ns));
     } catch (e) {
         fail("<" + $node.name + "> is not well-formed: " + $e.message);
     }
     return $tree;
+}
+
+/**
+ * A fragment with every `&` that does not start a known reference escaped.
+ *
+ * `&deg;`, `&nbsp;` and a bare `&` become `&amp;deg;`, `&amp;nbsp;`, `&amp;`,
+ * so `xml.decode` reads them back as written. CDATA sections are copied
+ * unchanged.
+ *
+ * @param text {string} the fragment
+ * @return {string} the fragment, with only references {@link entityBody} resolves left standing
+ */
+func escapeUnknownEntities(text as string) {
+    if (strings.indexOf($text, "&") < 0) {
+        return $text;
+    }
+    def sections as list of string init strings.split($text, "<![CDATA[");
+    def out as list of string init [escapeAmpersands($sections[0])];
+    for (def i as int init 1; $i < len($sections); $i = $i + 1) {
+        def section as string init $sections[$i];
+        def close as int init strings.indexOf($section, "]]>");
+        $out[] = "<![CDATA[";
+        if ($close < 0) {
+            $out[] = $section;
+        } else {
+            $out[] = strings.substring($section, 0, $close + 3);
+            $out[] = escapeAmpersands(strings.substring($section, $close + 3, len($section)));
+        }
+    }
+    return strings.join($out, "");
+}
+
+/**
+ * Markup with every `&` that does not start a known reference escaped.
+ *
+ * @param text {string} markup outside any CDATA section
+ * @return {string} the markup, unknown references turned into literal text
+ */
+func escapeAmpersands(text as string) {
+    def parts as list of string init strings.split($text, "&");
+    def out as list of string init [$parts[0]];
+    for (def i as int init 1; $i < len($parts); $i = $i + 1) {
+        def part as string init $parts[$i];
+        def semi as int init strings.indexOf($part, ";");
+        if ($semi >= 0 and entityBody(strings.substring($part, 0, $semi)) != "") {
+            $out[] = "&" + $part;
+        } else {
+            $out[] = "&amp;" + $part;
+        }
+    }
+    return strings.join($out, "");
 }
 
 /** Where a stand-in namespace URI for an undeclared prefix starts. */

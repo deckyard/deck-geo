@@ -385,3 +385,143 @@ func testDecodeLeafStandsInForAnUndeclaredPrefix() {
         STAND_IN_NAMESPACE + "q");
     testing.assertEqual(withStandIns("<p:a/>", {"p": "urn:p"})["p"], "urn:p");
 }
+
+func testChildNodesIgnoresACloseTagInsideAComment() {
+    # the comment's </gpx> is text: the root runs to the real close tag
+    def kids as list of Node init rootChildren("<gpx><!-- end </gpx> --><wpt /></gpx>");
+    testing.assertEqual(len($kids), 1);
+    testing.assertEqual($kids[0].name, "wpt");
+}
+
+func testChildNodesIgnoresTagsInsideCdata() {
+    # a </wpt> and a <wpt> inside CDATA neither close nor nest the element
+    def doc as string init "<gpx><wpt><desc><![CDATA[x </wpt> <wpt> y]]></desc></wpt><trk /></gpx>";
+    def kids as list of Node init rootChildren($doc);
+    testing.assertEqual(len($kids), 2);
+    testing.assertTrue($kids[0].closed);
+    testing.assertEqual($kids[1].name, "trk");
+    # the first child ends where the second begins: "<gpx>" is 5 bytes
+    testing.assertEqual($kids[0].end, strings.indexOf($doc, "<trk />"));
+}
+
+func testReadNodeEndsPastACloseTagWithSpace() {
+    # `</wpt >` is legal; the element ends after the `>`, not at len("</wpt>")
+    def doc as string init "<gpx><wpt></wpt ><trk /></gpx>";
+    def kids as list of Node init rootChildren($doc);
+    testing.assertEqual($kids[0].end, strings.indexOf($doc, "<trk"));
+    testing.assertEqual(fragment(buffer($doc), $kids[0]), "<wpt></wpt >");
+}
+
+func testOpenTagAtSkipsLongerNames() {
+    def src as bytes init buffer("<gpx><trkpt /><trkseg><gpxtpx:hr/><trk >");
+    # the first `<trk` hits are prefixes of `<trkpt` and `<trkseg`
+    testing.assertEqual(openTagAt($src, probeOf("<trk"), 0, len($src)), 34);
+    testing.assertEqual(openTagAt($src, probeOf("<gpx"), 1, len($src)), -1);
+    testing.assertEqual(openTagAt($src, probeOf("<trk"), 0, 34), -1);
+}
+
+func testCloseTagAtSkipsLongerNamesAndStrayText() {
+    def src as bytes init buffer("</trkpt></trkseg></trk x></trk\n>");
+    # "</trkpt>" 8 + "</trkseg>" 9 + "</trk x>" 8 = 25: `</trk x>` is not a close tag
+    testing.assertEqual(closeTagAt($src, probeOf("</trk"), 0, len($src)), 25);
+    testing.assertEqual(closeTagAt($src, probeOf("</trkseg"), 0, len($src)), 8);
+}
+
+func testExactTagAtTakesTheEarliestSpelling() {
+    def src as bytes init buffer("<a\t/><a><a/>");
+    testing.assertEqual(exactTagAt($src, probeOf("<a"), false, 0, len($src)), 0);
+    testing.assertEqual(exactTagAt($src, probeOf("<a"), false, 1, len($src)), 5);
+    testing.assertEqual(exactTagAt($src, probeOf("</a"), true, 0, len($src)), -1);
+}
+
+func testNestedCloseCapsSameNameNesting() {
+    # MAX_NESTING + 1 nested <f> under one more: deeper than any reader takes,
+    # so the outer element reads as unclosed rather than costing a scan per level
+    def inner as int init MAX_NESTING + 1;
+    def doc as string init strings.repeat("<f>", $inner + 1) + strings.repeat("</f>", $inner + 1);
+    def src as bytes init buffer($doc);
+    testing.assertEqual(matchingClose($src, "f", 3, len($src)), -1);
+    # one level less is read: the outer close is the last four bytes
+    def ok as string init strings.repeat("<f>", $inner) + strings.repeat("</f>", $inner);
+    def okSrc as bytes init buffer($ok);
+    testing.assertEqual(matchingClose($okSrc, "f", 3, len($okSrc)), len($ok) - 4);
+}
+
+func testNestedCloseIsLinearInOpenTagPrefixes() {
+    # One nested <trk>, then 80,000 `<trkx` inside a comment. Searching for the
+    # close tag again for every `<trkx` hit made this quadratic: 2.8 s here on
+    # the old scanner, against a few milliseconds when each position is kept.
+    def doc as string init "<gpx><trk><trk></trk><!--" + strings.repeat("<trkx", 80000) +
+        "--></trk></gpx>";
+    def started as int init time.now().nanos;
+    def kids as list of Node init rootChildren($doc);
+    def elapsed as int init (time.now().nanos - $started) // 1000000;
+    testing.assertEqual(len($kids), 1);
+    testing.assertTrue($kids[0].closed);
+    testing.assertTrue($elapsed < 1000);
+}
+
+func testSearchFromKeepsACurrentCursor() {
+    # a hit still ahead of the walk is current
+    testing.assertEqual(searchFrom(50, 10, 20, 100), -1);
+    # a passed hit is searched again from the walk's position
+    testing.assertEqual(searchFrom(15, 10, 20, 100), 20);
+    # no hit up to the bound already searched: nothing to do
+    testing.assertEqual(searchFrom(-1, 100, 20, 100), -1);
+    # the bound moved on: search only the new stretch
+    testing.assertEqual(searchFrom(-1, 60, 20, 100), 60);
+}
+
+func testSkipMarkupAndIsSelfClosing() {
+    def src as bytes init buffer("<!-- a --><![CDATA[b]]><!DOCTYPE x><p/>");
+    testing.assertEqual(skipMarkup($src, 0, len($src)), 10);
+    testing.assertEqual(skipMarkup($src, 10, len($src)), 23);
+    testing.assertEqual(skipMarkup($src, 23, len($src)), 25);
+    testing.assertTrue(isSelfClosing($src, 37, len($src)));
+    testing.assertFalse(isSelfClosing(buffer("<p>"), 2, 3));
+}
+
+func testEndOfOpenTagStepsOverQuotedGreaterThan() {
+    def src as bytes init buffer("<a x='>' y=\"'>\" z=\">\">rest");
+    # 22 bytes up to and including the real `>`
+    testing.assertEqual(endOfOpenTag($src, 2, len($src)), 22);
+    testing.assertEqual(endOfOpenTag(buffer("<a x=\">"), 2, 7), -1);
+}
+
+func testDecodeLeafKeepsAnUnknownEntityAsWritten() {
+    def src as bytes init buffer("<wpt><name>10&deg; &amp; a & b<![CDATA[&x;]]></name></wpt>");
+    def node as Node init rootNode($src);
+    def leaf as xml.Value init decodeLeaf($src, $node, {});
+    testing.assertEqual(leafText($leaf, "name"), "10&deg; & a & b&x;");
+}
+
+func testEscapeUnknownEntities() {
+    testing.assertEqual(
+        escapeUnknownEntities("a &deg; &lt; &#65; & b"),
+        "a &amp;deg; &lt; &#65; &amp; b");
+    testing.assertEqual(
+        escapeUnknownEntities("<![CDATA[&deg;]]>&deg;"),
+        "<![CDATA[&deg;]]>&amp;deg;");
+    testing.assertEqual(escapeUnknownEntities("plain"), "plain");
+    testing.assertEqual(escapeAmpersands("&nbsp;"), "&amp;nbsp;");
+}
+
+func testLeafCloseStopsAtTheNextOpenTagOfTheName() {
+    # "<p>" + "<p></p>": nesting-aware search pairs the outer <p> with nothing
+    # only after walking to the end; a leaf ends its search at the second <p>
+    def src as bytes init buffer("<p><p></p><!-- x --><p></p>");
+    testing.assertEqual(leafClose($src, "p", 3, len($src)), -1);
+    testing.assertEqual(leafClose($src, "p", 6, len($src)), 6);
+    # a comment before the close takes the comment-aware walk
+    def commented as bytes init buffer("<p><!-- </p> --></p>");
+    testing.assertEqual(leafClose($commented, "p", 3, len($commented)), 16);
+}
+
+func testNextChildOfReadsTheLeafNameFlat() {
+    def src as bytes init buffer("<p a='1'><p a='2'></p>");
+    testing.assertFalse(nextChildOf($src, 0, len($src), "p").closed);
+    testing.assertTrue(nextChildOf($src, 9, len($src), "p").closed);
+    # read nesting-aware, the first <p> holds the second and is unclosed too,
+    # but only after a walk to the limit
+    testing.assertFalse(nextChild($src, 0, len($src)).closed);
+}

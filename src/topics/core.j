@@ -117,11 +117,12 @@ def const XML_ILLEGAL as string init '[\x00-\x08\x0B\x0C\x0E-\x1F\x{FFFE}\x{FFFF
  * Characters XML 1.0 forbids outright - the C0 controls other than tab, line
  * feed and carriage return, and U+FFFE / U+FFFF - are dropped. No escape can
  * carry them (`&#1;` is just as illegal), and a strict parser rejects the
- * whole file over one.
+ * whole file over one. A carriage return is written as `&#13;`: a parser folds
+ * a raw CR into LF (XML 1.0 section 2.11), so only the reference survives a re-read.
  *
  * @param s {string} the text to escape
- * @return {string} the text with `& < > " '` replaced by their entities and
- *   characters XML cannot hold removed
+ * @return {string} the text with `& < > " '` replaced by their entities, CR as
+ *   `&#13;`, and characters XML cannot hold removed
  */
 func xmlEscape(s as string) {
     def legal as string init regex.replace(XML_ILLEGAL, $s, "");
@@ -129,6 +130,8 @@ func xmlEscape(s as string) {
     $out = strings.replace($out, "<", "&lt;");
     $out = strings.replace($out, ">", "&gt;");
     $out = strings.replace($out, "\"", "&quot;");
+    # A raw CR is folded into LF by every conforming parser; the reference is not.
+    $out = strings.replace($out, "\r", "&#13;");
     return strings.replace($out, "'", "&apos;");
 }
 
@@ -293,44 +296,32 @@ func resolveReference(part as string) {
  *   decimal(-0.0, COORD_PLACES);       # "0"
  */
 func decimal(value as float, places as int) {
-    def text as string init io.sprintf("%f|prec={$places}", $value);
-    if (strings.indexOf($text, ".") < 0) {
-        return $text;
-    }
-    def trimmed as string init trimTrailing(trimTrailing($text, "0"), ".");
+    # `trim=true` drops the trailing zeros and a bare `.` natively; a loop per
+    # character here was most of a writer's time.
+    def text as string init io.sprintf("%f|prec={$places}|trim=true", $value);
     # A coordinate of negative zero is a real value that reaches here through
     # normalizeLongitude and through plain arithmetic, and "-0" in a document is
     # the kind of thing a strict downstream validator rejects.
-    if ($trimmed == "-0" or $trimmed == "-") {
+    if ($text == "-0") {
         return "0";
     }
-    return $trimmed;
+    return $text;
 }
 
 /**
- * Strip every trailing copy of one character.
- *
- * `strings.trimRight` trims whitespace and takes no cutset, so the
- * trailing-zero trim that keeps written coordinates short is done here.
- *
- * @param s {string} the text to trim
- * @param ch {string} the single character to strip from the end
- * @return {string} `s` with its trailing `ch` run removed
+ * What a number in document text may look like: an optional sign, digits with
+ * an optional fraction, an optional exponent. The `xsd:double` lexical form
+ * without `INF` and `NaN`, which covers GPX, KML and GML.
  */
-func trimTrailing(s as string, ch as string) {
-    def end as int init len($s);
-    while ($end > 0 and strings.substring($s, $end - 1, $end) == $ch) {
-        $end = $end - 1;
-    }
-    return strings.substring($s, 0, $end);
-}
+def const NUMBER_PATTERN as string init '^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$';
 
 /**
  * Parse a decimal number out of document text.
  *
  * Leading and trailing whitespace is tolerated, because XML indentation puts
  * it there. Anything else is an error: a coordinate that does not parse is
- * damage a reader cannot work around.
+ * damage a reader cannot work around. Only {@link NUMBER_PATTERN} is read:
+ * `convert.toFloat` alone also takes Jennifer literals (`1_0`, `0x1p4`).
  *
  * @param s {string} the text to read
  * @param what {string} the field being read, for the error message
@@ -342,9 +333,7 @@ func number(s as string, what as string) {
     if ($trimmed == "") {
         fail($what + " is empty");
     }
-    # convert.toFloat accepts Jennifer's digit separators, so "1_0" read as a
-    # latitude of 10. No coordinate format writes one.
-    if (strings.contains($trimmed, "_")) {
+    if (not regex.matches(NUMBER_PATTERN, $trimmed)) {
         fail($what + " is not a number: " + quoted($trimmed));
     }
     def value as float init 0.0;
@@ -398,16 +387,59 @@ func clampUnit(value as float) {
 /**
  * Normalise a bearing into the half-open range 0 to 360 degrees.
  *
+ * Any finite angle is accepted. Beyond 2^53 degrees `math.floor` of the turn
+ * count would not fit an `int`, so such an angle is reduced by
+ * {@link wrapLargeAngle} instead.
+ *
  * @param degrees {float} any angle in degrees
  * @return {float} the same direction, 0.0 <= result < 360.0
  */
 func normalizeBearing(degrees as float) {
-    def turns as float init $degrees / 360.0;
-    def wrapped as float init $degrees - 360.0 * convert.toFloat(math.floor($turns));
+    def wrapped as float init 0.0;
+    if (math.abs($degrees) < LARGE_ANGLE) {
+        $wrapped = $degrees - 360.0 * convert.toFloat(math.floor($degrees / 360.0));
+    } else {
+        $wrapped = wrapLargeAngle($degrees);
+    }
     if ($wrapped < 0.0 or $wrapped >= 360.0) {
         return 0.0;
     }
     return $wrapped;
+}
+
+/**
+ * The angle, in degrees, from which {@link normalizeBearing} stops using
+ * `math.floor`: 2^53, where every float is a whole number.
+ */
+def const LARGE_ANGLE as float init 9007199254740992.0;
+
+/**
+ * Reduce a large angle modulo 360 degrees, exactly.
+ *
+ * Binary long division: subtracts 360 * 2^k for falling k. Each subtraction
+ * has `step <= rest < 2 * step`, so it is exact (Sterbenz), and the result is
+ * the true remainder of the float's value. At most about 2,000 iterations for
+ * an angle near the largest float.
+ *
+ * @param degrees {float} a finite angle in degrees
+ * @return {float} the same direction, 0.0 <= result <= 360.0
+ */
+func wrapLargeAngle(degrees as float) {
+    def rest as float init math.abs($degrees);
+    def step as float init 360.0;
+    while ($step <= $rest / 2.0) {
+        $step = $step * 2.0;
+    }
+    while ($step >= 360.0) {
+        if ($rest >= $step) {
+            $rest = $rest - $step;
+        }
+        $step = $step / 2.0;
+    }
+    if ($degrees < 0.0 and $rest > 0.0) {
+        return 360.0 - $rest;
+    }
+    return $rest;
 }
 
 /**

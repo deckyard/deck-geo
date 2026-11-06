@@ -62,6 +62,7 @@ use xml;
 use archive;
 use encoding;
 use regex;
+use meta;
 
 include "topics/version.j";
 include "topics/core.j";
