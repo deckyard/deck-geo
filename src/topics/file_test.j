@@ -204,9 +204,9 @@ func testOpenReadsADeclaredLatin1File() {
     def head as string init "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>" +
         "<gpx><wpt lat=\"1\" lon=\"2\"><name>Ca";
     def parts as list of bytes init [
-        convert.bytesFromString($head, "utf-8"),
-        encoding.encode("\u00f1", "iso-8859-1"),
-        convert.bytesFromString("on</name></wpt></gpx>", "utf-8")
+        convert.bytesFromString("utf-8", $head),
+        encoding.encode("iso-8859-1", "\u00f1"),
+        convert.bytesFromString("utf-8", "on</name></wpt></gpx>")
     ];
     # an older Garmin export: Latin-1, and saying so in its declaration
     def target as string init path.join($dir, "old.gpx");
@@ -220,23 +220,23 @@ func testReadKmzPrefersDocKml() {
     def entries as list of archive.Entry init [
         archive.Entry{
             name: "files/legend.kml",
-            data: convert.bytesFromString($legend, "utf-8"),
+            data: convert.bytesFromString("utf-8", $legend),
             mode: 420,
             mtime: 0
         },
         archive.Entry{
             name: KMZ_ENTRY,
-            data: convert.bytesFromString(writeKml(fileFixture()), "utf-8"),
+            data: convert.bytesFromString("utf-8", writeKml(fileFixture())),
             mode: 420,
             mtime: 0
         }
     ];
-    def doc as Document init readKmz(archive.pack($entries, "zip"));
+    def doc as Document init readKmz(archive.pack("zip", $entries));
     testing.assertEqual($doc.name, "Tyrol");
 }
 
 func testKmzEntryIndexFallsBackToARootKmlThenAnyKml() {
-    def nothing as bytes init convert.bytesFromString("", "utf-8");
+    def nothing as bytes init convert.bytesFromString("utf-8", "");
     def nested as archive.Entry init archive.Entry{
         name: "a/x.kml",
         data: $nothing,

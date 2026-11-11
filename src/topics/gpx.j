@@ -32,7 +32,7 @@ export def const GPX_CREATOR as string init "@deckyard/geo";
  *   def doc as geo.Document init geo.readGpx(fs.readString("hike.gpx"));
  */
 export func readGpx(text as string) {
-    return readGpxSource(convert.bytesFromString($text, "utf-8"), $text);
+    return readGpxSource(convert.bytesFromString("utf-8", $text), $text);
 }
 
 /**
@@ -49,7 +49,7 @@ func readGpxBytes(src as bytes) {
     def text as string init "";
     def utf8 as bool init true;
     try {
-        $text = convert.stringFromBytes($src, "utf-8");
+        $text = convert.stringFromBytes("utf-8", $src);
     } catch (e) {
         $utf8 = false;
     }
@@ -820,7 +820,7 @@ def const SCAN_DEPARTURES as list of string init [
 ];
 
 /** The end of a comment, as bytes. */
-def const COMMENT_END_PROBE as bytes init convert.bytesFromString("-->", "utf-8");
+def const COMMENT_END_PROBE as bytes init convert.bytesFromString("utf-8", "-->");
 
 /**
  * Whether any comment holds `<![CDATA[`.

@@ -354,7 +354,7 @@ def struct GpxRead {
 func scanGpxRead(text as string) {
     def out as GpxRead init GpxRead{doc: document(), error: ""};
     try {
-        $out.doc = readGpxScan(convert.bytesFromString($text, "utf-8"));
+        $out.doc = readGpxScan(convert.bytesFromString("utf-8", $text));
     } catch (e) {
         $out.error = $e.kind + ": " + $e.message;
     }
@@ -368,7 +368,7 @@ func scanGpxRead(text as string) {
  * @return {GpxRead} what it read, or `kind: message`
  */
 func treeGpxRead(text as string) {
-    def src as bytes init convert.bytesFromString($text, "utf-8");
+    def src as bytes init convert.bytesFromString("utf-8", $text);
     def tree as GpxTree init gpxTree($src, $text);
     testing.assertTrue($tree.usable);
     def out as GpxRead init GpxRead{doc: document(), error: ""};
@@ -400,7 +400,7 @@ func assertTreeReadsAsScan(text as string) {
  */
 func assertScanReadsDecodable(text as string) {
     testing.assertEqual(xml.localName(xml.decode($text)), "gpx");
-    def src as bytes init convert.bytesFromString($text, "utf-8");
+    def src as bytes init convert.bytesFromString("utf-8", $text);
     testing.assertFalse(gpxTree($src, $text).usable);
     def doc as Document init readGpx($text);
     testing.assertEqual($doc, readGpxScan($src));
@@ -524,8 +524,11 @@ func testReadGpxFallsBackWhereTheScannerReadsDifferently() {
     # a field holding markup: the scanner keeps the child's text
     $doc = assertScanReadsDecodable("<gpx><metadata><name>a<b>c</b>d</name></metadata></gpx>");
     testing.assertEqual($doc.name, "acd");
-    # a sign in a character reference: the scanner leaves it standing
-    $doc = assertScanReadsDecodable("<gpx><trk><name>&#+65;</name></trk></gpx>");
+    # a sign in a character reference: xml.decode refuses it (Jennifer 0.26),
+    # so the scanner reads the file and leaves the reference standing
+    def signed as string init "<gpx><trk><name>&#+65;</name></trk></gpx>";
+    testing.assertFalse(gpxTree(convert.bytesFromString("utf-8", $signed), $signed).usable);
+    $doc = readGpx($signed);
     testing.assertEqual($doc.tracks[0].name, "&#+65;");
     # a processing instruction inside the root
     $doc = assertScanReadsDecodable("<gpx><?pi x?><name>N</name></gpx>");
@@ -724,7 +727,7 @@ func testReadGpxTreeMatchesScanOnEveryFuzzInput() {
     testing.assertEqual(len($inputs), 1 + ($size + 6) // 7 + ($size + 10) // 11 + 60 + 120 + 40);
     def compared as int init 0;
     for (def text in $inputs) {
-        if (gpxTree(convert.bytesFromString($text, "utf-8"), $text).usable) {
+        if (gpxTree(convert.bytesFromString("utf-8", $text), $text).usable) {
             testing.assertEqual(treeGpxRead($text), scanGpxRead($text));
             $compared = $compared + 1;
         }

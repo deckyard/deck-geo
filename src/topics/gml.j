@@ -47,7 +47,7 @@ export def const GML_CRS as string init "urn:ogc:def:crs:EPSG::4326";
  *   def doc as geo.Document init geo.readGml(fs.readString("features.gml"));
  */
 export func readGml(text as string) {
-    return readGmlBytes(convert.bytesFromString($text, "utf-8"));
+    return readGmlBytes(convert.bytesFromString("utf-8", $text));
 }
 
 /**

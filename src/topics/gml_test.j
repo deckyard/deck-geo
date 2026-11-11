@@ -295,8 +295,8 @@ func testGmlRoundTrip() {
 
 func testGmlDimension() {
     def src as bytes init convert.bytesFromString(
-        "<a><gml:posList srsDimension=\"3\">0 0 0</gml:posList><b /></a>",
-        "utf-8");
+        "utf-8",
+        "<a><gml:posList srsDimension=\"3\">0 0 0</gml:posList><b /></a>");
     def root as Node init rootNode($src);
     def kids as list of Node init childNodes($src, $root.openEnd, $root.innerEnd);
     testing.assertEqual(gmlDimension($src, $kids[0]), 3);

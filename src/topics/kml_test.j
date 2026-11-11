@@ -277,7 +277,7 @@ func testKmzRoundTrip() {
 }
 
 func testWriteKmzHoldsOneDocKml() {
-    def entries as list of archive.Entry init archive.unpack(writeKmz(document()), "zip");
+    def entries as list of archive.Entry init archive.unpack("zip", writeKmz(document()));
     testing.assertEqual(len($entries), 1);
     testing.assertEqual($entries[0].name, KMZ_ENTRY);
 }
@@ -285,32 +285,32 @@ func testWriteKmzHoldsOneDocKml() {
 func testReadKmzFindsTheKmlPastOtherEntries() {
     def icon as archive.Entry init archive.Entry{
         name: "files/icon.png",
-        data: convert.bytesFromString("not really a png", "utf-8"),
+        data: convert.bytesFromString("utf-8", "not really a png"),
         mode: 0o644,
         mtime: 0
     };
     def doc as archive.Entry init archive.Entry{
         name: "doc.kml",
-        data: convert.bytesFromString(kmlFixture(), "utf-8"),
+        data: convert.bytesFromString("utf-8", kmlFixture()),
         mode: 0o644,
         mtime: 0
     };
-    def blob as bytes init archive.pack([$icon, $doc], "zip");
+    def blob as bytes init archive.pack("zip", [$icon, $doc]);
     testing.assertEqual(readKmz($blob).name, "Tyrol");
 }
 
 func failOnKmzThatIsNotAZip() {
-    readKmz(convert.bytesFromString("just text", "utf-8"));
+    readKmz(convert.bytesFromString("utf-8", "just text"));
 }
 
 func failOnKmzWithNoKml() {
     def only as archive.Entry init archive.Entry{
         name: "readme.txt",
-        data: convert.bytesFromString("nothing here", "utf-8"),
+        data: convert.bytesFromString("utf-8", "nothing here"),
         mode: 0o644,
         mtime: 0
     };
-    readKmz(archive.pack([$only], "zip"));
+    readKmz(archive.pack("zip", [$only]));
 }
 
 func testReadKmzRejectsWhatIsNotAKmz() {
@@ -325,11 +325,11 @@ func failOnKmzPastTheEntryCap() {
     $text = $text + strings.repeat(" ", MAX_KMZ_ENTRY_BYTES + 1 - len($text));
     def doc as archive.Entry init archive.Entry{
         name: "doc.kml",
-        data: convert.bytesFromString($text, "utf-8"),
+        data: convert.bytesFromString("utf-8", $text),
         mode: 0o644,
         mtime: 0
     };
-    readKmz(archive.pack([$doc], "zip"));
+    readKmz(archive.pack("zip", [$doc]));
 }
 
 func testReadKmzRefusesAnEntryPastTheCap() {
@@ -350,7 +350,7 @@ func failOnKmzPastTheTotalCap() {
     def entries as list of archive.Entry init [];
     $entries[] = archive.Entry{
         name: "doc.kml",
-        data: convert.bytesFromString(kmlFixture(), "utf-8"),
+        data: convert.bytesFromString("utf-8", kmlFixture()),
         mode: 0o644,
         mtime: 0
     };
@@ -363,7 +363,7 @@ func failOnKmzPastTheTotalCap() {
             mtime: 0
         };
     }
-    readKmz(archive.pack($entries, "zip"));
+    readKmz(archive.pack("zip", $entries));
 }
 
 func testReadKmzRefusesEntriesPastTheTotalCap() {
@@ -406,7 +406,7 @@ func kmzWithASymlink() {
         "AAAhAMf4Dy9RAAAAUQAAAAcAAAAAAAAAAAAAAIABAAAAAGRvYy5rbWxQSwECFAMUAAAAAAAAACEA",
         "z8OdVQcAAAAHAAAABAAAAAAAAAAAAAAA/6F2AAAAbGlua1BLBQYAAAAAAgACAGcAAACfAAAAAAA="
     ];
-    return encoding.fromText(strings.join($parts, ""), "base64");
+    return encoding.fromText("base64", strings.join($parts, ""));
 }
 
 func testReadKmzSkipsASymbolicLink() {

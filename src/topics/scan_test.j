@@ -8,7 +8,7 @@
 
 /** A string as the byte buffer the scanner works on. */
 func buffer(text as string) {
-    return convert.bytesFromString($text, "utf-8");
+    return convert.bytesFromString("utf-8", $text);
 }
 
 /** The direct children of a document's root element. */
@@ -320,7 +320,7 @@ func testToUtf8TranscodesADeclaredLatin1Document() {
     def head as string init "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><gpx><name>Ca";
     def parts as list of bytes init [
         buffer($head),
-        encoding.encode("\u00f1", "iso-8859-1"),
+        encoding.encode("iso-8859-1", "\u00f1"),
         buffer("on</name></gpx>")
     ];
     def src as bytes init toUtf8(binary.join($parts));
@@ -361,22 +361,22 @@ func testToUtf8RejectsWhatItCannotRead() {
 # The root's xmlns declarations, prefix to URI, with the default under "".
 func testNamespaceBindingsReadsTheRoot() {
     def src as bytes init convert.bytesFromString(
-        "<gpx xmlns=\"urn:d\" xmlns:a=\"urn:a\" version=\"1.1\"><wpt/></gpx>",
-        "utf-8");
+        "utf-8",
+        "<gpx xmlns=\"urn:d\" xmlns:a=\"urn:a\" version=\"1.1\"><wpt/></gpx>");
     def ns as map of string to string init namespaceBindings($src, rootNode($src));
     testing.assertEqual(len($ns), 2);
     testing.assertEqual($ns[""], "urn:d");
     testing.assertEqual($ns["a"], "urn:a");
     # A root with an undeclared prefix of its own still yields what it declares.
-    def damaged as bytes init convert.bytesFromString("<x:gpx xmlns:a=\"urn:a\"/>", "utf-8");
+    def damaged as bytes init convert.bytesFromString("utf-8", "<x:gpx xmlns:a=\"urn:a\"/>");
     testing.assertEqual(namespaceBindings($damaged, rootNode($damaged))["a"], "urn:a");
 }
 
 # A leaf using a prefix nobody declared is damage, and still decodes.
 func testDecodeLeafStandsInForAnUndeclaredPrefix() {
     def src as bytes init convert.bytesFromString(
-        "<r><p:pt lat=\"1\"><p:name>n</p:name></p:pt></r>",
-        "utf-8");
+        "utf-8",
+        "<r><p:pt lat=\"1\"><p:name>n</p:name></p:pt></r>");
     def leaf as Node init childNodes($src, rootNode($src).openEnd, rootNode($src).innerEnd)[0];
     def tree as xml.Value init decodeLeaf($src, $leaf, {});
     testing.assertEqual(leafText($tree, "name"), "n");

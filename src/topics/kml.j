@@ -60,7 +60,7 @@ export def const MAX_KMZ_TOTAL_BYTES as int init 67108864;
  *   def doc as geo.Document init geo.readKml(fs.readString("places.kml"));
  */
 export func readKml(text as string) {
-    return readKmlBytes(convert.bytesFromString($text, "utf-8"));
+    return readKmlBytes(convert.bytesFromString("utf-8", $text));
 }
 
 /**
@@ -493,7 +493,7 @@ export func readKmz(data as bytes) {
         skipSpecial: true
     };
     try {
-        $entries = archive.unpackWith($data, "zip", $caps);
+        $entries = archive.unpackWith("zip", $data, $caps);
     } catch (e) {
         if ($e.kind == "limit") {
             fail("the KMZ archive is too large to read (" + kmzLimitBroken($e.message) + "): " +
@@ -573,9 +573,9 @@ func kmzEntryIndex(entries as list of archive.Entry) {
 export func writeKmz(doc as Document) {
     def entry as archive.Entry init archive.Entry{
         name: KMZ_ENTRY,
-        data: convert.bytesFromString(writeKml($doc), "utf-8"),
+        data: convert.bytesFromString("utf-8", writeKml($doc)),
         mode: 0o644,
         mtime: 0
     };
-    return archive.pack([$entry], "zip");
+    return archive.pack("zip", [$entry]);
 }
