@@ -17,7 +17,7 @@ degrees, latitude before longitude in every signature; distances are metres.
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `ERROR_KIND` | `"geo"` | The `kind` every `Error` this deck raises carries. |
+| `ERROR_KIND` | `"geo"` | The `kind` every `Error` this deck raises carries, except a reached cap (`"limit"`). |
 | `COORD_PLACES` | `7` | How many decimal places a latitude or longitude is written with. |
 | `ELEVATION_PLACES` | `2` | How many decimal places an elevation is written with. |
 | `MAX_NESTING` | `100` | How deeply a document may nest containers before a reader raises. |

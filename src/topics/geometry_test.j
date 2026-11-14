@@ -326,8 +326,8 @@ func failOnASpacingBelowTheRoundingStep() {
 }
 
 func testResampleRefusesMoreThanMaxResamplePoints() {
-    testing.assertThrows("failOnResamplingIntoTooManyPoints", ERROR_KIND);
-    testing.assertThrows("failOnASpacingBelowTheRoundingStep", ERROR_KIND);
+    testing.assertThrows("failOnResamplingIntoTooManyPoints", "limit");
+    testing.assertThrows("failOnASpacingBelowTheRoundingStep", "limit");
     testing.assertEqual(MAX_RESAMPLE_POINTS, 1000000);
     # a degree on the equator, 111,195 m, at 1 km: samples at 1..111 km plus both ends
     testing.assertEqual(len(resample([point(0.0, 0.0), point(0.0, 1.0)], 1000.0)), 113);

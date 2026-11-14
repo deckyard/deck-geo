@@ -53,7 +53,8 @@ site/          the built book; not committed
 ## Errors
 
 Every failure is `Error{kind: "geo", ...}` raised through `fail()` in
-`core.j`. The line between an error and damage a reader works around is in
+`core.j`, or `Error{kind: "limit", ...}` through `failLimit()` for a reached
+cap (`MAX_NESTING`, the KMZ caps, `MAX_RESAMPLE_POINTS`). The line between an error and damage a reader works around is in
 [the introduction](../index.md); `tools/fuzz.j` asserts it, and that no
 malformed input raises any other `kind`.
 

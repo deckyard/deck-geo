@@ -489,8 +489,8 @@ export def const MAX_RESAMPLE_POINTS as int init 1000000;
  * @param points {list of Point} the path to resample, in order
  * @param spacing {float} how far apart the results should be, in metres
  * @return {list of Point} the resampled path
- * @throws {Error} when the spacing is not positive, or when the path's length
- *   divided by `spacing` reaches {@link MAX_RESAMPLE_POINTS} - 1
+ * @throws {Error} when the spacing is not positive; kind `"limit"` when the
+ *   path's length divided by `spacing` reaches {@link MAX_RESAMPLE_POINTS} - 1
  */
 export func resample(points as list of Point, spacing as float) {
     if ($spacing <= 0.0) {
@@ -508,7 +508,7 @@ export func resample(points as list of Point, spacing as float) {
     }
     # divided, not multiplied: spacing * MAX could overflow, which raises
     if ($total / convert.toFloat(MAX_RESAMPLE_POINTS - 1) >= $spacing) {
-        fail("resample spacing " + convert.toString($spacing) + " m over a " +
+        failLimit("resample spacing " + convert.toString($spacing) + " m over a " +
             convert.toString(math.round($total)) + " m path exceeds MAX_RESAMPLE_POINTS (" +
             convert.toString(MAX_RESAMPLE_POINTS) + ")");
     }

@@ -49,7 +49,9 @@ On a large track the copies cost memory: see [Memory](internal/memory.md).
 
 ## Errors
 
-Every failure is an `Error` with `kind` `"geo"` (`ERROR_KIND`).
+Every failure is an `Error` with `kind` `"geo"` (`ERROR_KIND`), except a
+reached cap - nesting past `MAX_NESTING`, a KMZ past its caps, `resample`
+past `MAX_RESAMPLE_POINTS` - which is kind `"limit"`.
 
 ```jennifer
 try {
@@ -72,7 +74,7 @@ markup the model does not cover is ignored. `tools/fuzz.j` checks this line on
 every commit with about 1,800 seeded inputs (truncated, byte-bent and
 type-swapped fixtures): each either reads into points that are all on the
 Earth, and survives a write and re-read in all four text formats, or raises
-`kind` `"geo"`.
+`kind` `"geo"` (or `"limit"` for a cap).
 
 Nothing beyond the five predefined XML entities and numeric character
 references is expanded, and no external entity is fetched. A KMZ entry that

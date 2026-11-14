@@ -139,7 +139,7 @@ func failOnOverNestedKml() {
 }
 
 func testReadKmlRefusesPathologicalNesting() {
-    testing.assertThrows("failOnOverNestedKml", ERROR_KIND);
+    testing.assertThrows("failOnOverNestedKml", "limit");
 }
 
 func testReadKmlAcceptsNestingUpToTheCeiling() {
@@ -337,7 +337,7 @@ func testReadKmzRefusesAnEntryPastTheCap() {
     try {
         failOnKmzPastTheEntryCap();
     } catch (e) {
-        testing.assertEqual($e.kind, ERROR_KIND);
+        testing.assertEqual($e.kind, "limit");
         $message = $e.message;
     }
     testing.assertTrue(strings.contains($message, "MAX_KMZ_ENTRY_BYTES"));
@@ -372,7 +372,7 @@ func testReadKmzRefusesEntriesPastTheTotalCap() {
     try {
         failOnKmzPastTheTotalCap();
     } catch (e) {
-        testing.assertEqual($e.kind, ERROR_KIND);
+        testing.assertEqual($e.kind, "limit");
         $message = $e.message;
     }
     # names the cap that was passed, not the per-entry one

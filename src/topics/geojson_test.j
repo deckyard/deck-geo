@@ -213,7 +213,7 @@ func failOnOverNestedGeojson() {
 }
 
 func testReadGeojsonRefusesPathologicalNesting() {
-    testing.assertThrows("failOnOverNestedGeojson", ERROR_KIND);
+    testing.assertThrows("failOnOverNestedGeojson", "limit");
 }
 
 func testReadGeojsonRejectsWhatItCannotRead() {

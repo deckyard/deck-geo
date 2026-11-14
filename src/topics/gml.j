@@ -41,8 +41,9 @@ export def const GML_CRS as string init "urn:ogc:def:crs:EPSG::4326";
  * @param text {string} the document
  * @return {Document} the geometries it held
  * @throws {Error} when the text holds no XML element, a coordinate does not parse
- *   or is out of range, a list does not divide into positions, a `coordinates`
- *   element names the same separator twice, or the nesting passes `MAX_NESTING`
+ *   or is out of range, a list does not divide into positions, or a
+ *   `coordinates` element names the same separator twice; kind `"limit"` when
+ *   the nesting passes `MAX_NESTING`
  * @example
  *   def doc as geo.Document init geo.readGml(fs.readString("features.gml"));
  */

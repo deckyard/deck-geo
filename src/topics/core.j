@@ -29,7 +29,8 @@ export def const ELEVATION_PLACES as int init 2;
  *
  *   Jennifer caps recursion at 10,000 nested calls and raises there, but with
  *   `kind` `"runtime"` - so without a limit of its own this deck would break
- *   its own promise that every failure it raises carries `kind` `"geo"`.
+ *   its own promise that every failure it raises carries `kind` `"geo"`, or
+ *   `"limit"` for a cap.
  *
  * Real documents nest a handful of levels. 100 is far past anything a drawing
  * tool or a WFS produces, and bounds the walk at well under a second.
@@ -41,11 +42,11 @@ export def const MAX_NESTING as int init 100;
  *
  * @param depth {int} how many levels down the reader is
  * @param what {string} the kind of nesting, for the error message
- * @throws {Error} when `depth` is past `MAX_NESTING`
+ * @throws {Error} kind `"limit"` when `depth` is past `MAX_NESTING`
  */
 func checkDepth(depth as int, what as string) {
     if ($depth > MAX_NESTING) {
-        fail($what + " nested more than " + convert.toString(MAX_NESTING) +
+        failLimit($what + " nested more than " + convert.toString(MAX_NESTING) +
             " deep; refusing to descend further");
     }
 }
@@ -81,6 +82,16 @@ func quoted(text as string) {
  */
 func fail(message as string) {
     throw Error{kind: ERROR_KIND, message: $message, file: "", line: 0, col: 0};
+}
+
+/**
+ * Raise a reached cap: kind `"limit"`, the message as `fail` writes it.
+ *
+ * @param message {string} what passed the cap
+ * @throws {Error} kind `"limit"`, always
+ */
+func failLimit(message as string) {
+    throw Error{kind: "limit", message: $message, file: "", line: 0, col: 0};
 }
 
 /**

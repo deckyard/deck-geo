@@ -54,8 +54,8 @@ export def const MAX_KMZ_TOTAL_BYTES as int init 67108864;
  *
  * @param text {string} the document
  * @return {Document} what it held
- * @throws {Error} when the root is not `<kml>`, a coordinate does not parse or is
- *   out of range, or the nesting passes `MAX_NESTING`
+ * @throws {Error} when the root is not `<kml>`, or a coordinate does not parse
+ *   or is out of range; kind `"limit"` when the nesting passes `MAX_NESTING`
  * @example
  *   def doc as geo.Document init geo.readKml(fs.readString("places.kml"));
  */
@@ -95,7 +95,7 @@ func readKmlBytes(src as bytes) {
  * @param fields {list of Node} the container's children
  * @param depth {int} how many containers deep this call is
  * @return {Document} a fresh document; the argument is not changed
- * @throws {Error} when the nesting passes `MAX_NESTING`
+ * @throws {Error} kind `"limit"` when the nesting passes `MAX_NESTING`
  */
 func collectPlacemarks(into as Document, src as bytes, fields as list of Node, depth as int) {
     checkDepth($depth, "KML containers");
@@ -192,7 +192,7 @@ func readPlacemark(src as bytes, mark as Node, depth as int) {
  * @param fields {list of Node} the placemark's children
  * @param depth {int} how many levels deep this call is
  * @return {list of Node} the `Point`, `LineString`, `LinearRing` and `Polygon` elements
- * @throws {Error} when the nesting passes `MAX_NESTING`
+ * @throws {Error} kind `"limit"` when the nesting passes `MAX_NESTING`
  */
 func geometryNodes(src as bytes, fields as list of Node, depth as int) {
     checkDepth($depth, "KML geometries");
@@ -478,10 +478,10 @@ func coordinateText(p as Point) {
  *
  * @param data {bytes} the archive
  * @return {Document} what the KML inside held
- * @throws {Error} when the data is not a zip, an entry inflates past
- *   `MAX_KMZ_ENTRY_BYTES`, the entries together past `MAX_KMZ_TOTAL_BYTES`, it
- *   holds more entries than `archive.unpack` allows, it holds no `.kml` entry,
- *   or the KML does not parse
+ * @throws {Error} kind `"limit"` when an entry inflates past
+ *   `MAX_KMZ_ENTRY_BYTES`, the entries together past `MAX_KMZ_TOTAL_BYTES`, or
+ *   it holds more entries than `archive.unpack` allows; kind `"geo"` when the
+ *   data is not a zip, it holds no `.kml` entry, or the KML does not parse
  * @example
  *   def doc as geo.Document init geo.readKmz(fs.readBytes("places.kmz"));
  */
@@ -496,7 +496,8 @@ export func readKmz(data as bytes) {
         $entries = archive.unpackWith("zip", $data, $caps);
     } catch (e) {
         if ($e.kind == "limit") {
-            fail("the KMZ archive is too large to read (" + kmzLimitBroken($e.message) + "): " +
+            failLimit("the KMZ archive is too large to read (" + kmzLimitBroken($e.message) +
+                "): " +
                 $e.message);
         }
         fail("not a KMZ archive: " + $e.message);

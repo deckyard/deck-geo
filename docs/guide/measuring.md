@@ -164,7 +164,7 @@ no time and no name. A spacing that is not positive raises.
 
 The caller's spacing, not the input, sets the output's size, so it is capped:
 when the path's length over `spacing` reaches `MAX_RESAMPLE_POINTS`
-(1,000,000), `resample` raises `kind` `"geo"` before building a point.
+(1,000,000), `resample` raises `kind` `"limit"` before building a point.
 
 `interpolate(a, b, fraction)` is the step on its own. It works in degrees,
 which over one leg of a track is indistinguishable from the great circle, and

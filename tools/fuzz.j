@@ -18,7 +18,8 @@
  *
  * Both are asserted here. For every mutation of every fixture:
  *
- *   1  a reader either returns a Document or raises `Error{kind: "geo"}` -
+ *   1  a reader either returns a Document or raises `Error{kind: "geo"}`
+ *      (`"limit"` for a cap) -
  *      never an uncaught interpreter error, and never a hang
  *   2  every point that comes back is a position on the Earth
  *   3  whatever came back can be written in all four formats and read again,
@@ -118,7 +119,7 @@ func drive(format as string, input as string) {
         $doc = geo.readText($input, $format);
     } catch (e) {
         $raised = true;
-        if ($e.kind != "geo") {
+        if ($e.kind != "geo" and $e.kind != "limit") {
             broke($format, "raised " + $e.kind + " rather than geo: " + $e.message, $input);
         }
     }

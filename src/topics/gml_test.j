@@ -221,7 +221,7 @@ func failOnOverNestedGml() {
 }
 
 func testReadGmlRefusesPathologicalNesting() {
-    testing.assertThrows("failOnOverNestedGml", ERROR_KIND);
+    testing.assertThrows("failOnOverNestedGml", "limit");
 }
 
 func testReadGmlRejectsWhatItCannotRead() {

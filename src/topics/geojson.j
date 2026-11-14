@@ -23,8 +23,8 @@
  * @return {Document} what it held
  * @throws {Error} when the text is not JSON, the root is not an object with a
  *   string `type`, a feature or geometry is not an object (a feature's
- *   `geometry` may be `null`), a position is malformed or out of range, or
- *   geometry collections nest past `MAX_NESTING`
+ *   `geometry` may be `null`), or a position is malformed or out of range;
+ *   kind `"limit"` when geometry collections nest past `MAX_NESTING`
  * @example
  *   def doc as geo.Document init geo.readGeojson(fs.readString("places.geojson"));
  */

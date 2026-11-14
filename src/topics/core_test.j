@@ -202,7 +202,7 @@ func failOnTooDeep() {
 func testCheckDepthStopsAtTheCeiling() {
     checkDepth(0, "test containers");
     checkDepth(MAX_NESTING, "test containers");
-    testing.assertThrows("failOnTooDeep", ERROR_KIND);
+    testing.assertThrows("failOnTooDeep", "limit");
     testing.assertEqual(MAX_NESTING, 100);
 }
 

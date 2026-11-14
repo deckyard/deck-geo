@@ -84,7 +84,7 @@ about a third the size of its KML.
 Zip compresses XML at better than 400:1, so the size of a KMZ says little
 about what it unpacks to: a 1 MB archive can expand to half a gigabyte.
 `readKmz` therefore inflates through `archive.unpackWith` with two caps, and
-refuses the archive with `kind` `"geo"` as soon as one is passed:
+refuses the archive with `kind` `"limit"` as soon as one is passed:
 
 | Cap | Value | Bounds |
 |---|---|---|
