@@ -1,6 +1,6 @@
 [package]
 name = "@deckyard/geo"
-version = "0.2.0-dev"
+version = "0.2.0"
 description = "Read, edit and write geographic coordinate formats - GPX, KML, KMZ, GeoJSON and the GML geometry subset - over one point model, with geodesy, track statistics, simplification, geohashes and map tiles"
 license = "LGPL-3.0-only"
 authors = ["mplx <mplx@jennifer-lang.dev>"]
