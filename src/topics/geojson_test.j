@@ -216,6 +216,16 @@ func testReadGeojsonRefusesPathologicalNesting() {
     testing.assertThrows("failOnOverNestedGeojson", "limit");
 }
 
+func failOnJsonPastTheDecoderCap() {
+    readGeojson(strings.repeat("[", 1100) + strings.repeat("]", 1100));
+}
+
+# Text past json.decode's nesting cap is a reached cap: kind "limit", passed
+# on unchanged rather than reported as "not JSON".
+func testReadGeojsonPassesTheDecoderCapOn() {
+    testing.assertThrows("failOnJsonPastTheDecoderCap", "limit");
+}
+
 func testReadGeojsonRejectsWhatItCannotRead() {
     testing.assertThrows("failOnNotJson", ERROR_KIND);
     testing.assertThrows("failOnAShortPosition", ERROR_KIND);

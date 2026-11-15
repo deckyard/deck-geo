@@ -27,6 +27,17 @@ func gpxFixture() {
     return strings.join($parts, "");
 }
 
+func failOnAPointPastTheDecoderCap() {
+    readGpx('<gpx version="1.1"><wpt lat="47" lon="11">' + strings.repeat("<x>", 1100) +
+        strings.repeat("</x>", 1100) + "</wpt></gpx>");
+}
+
+# A point past xml.decode's nesting cap is a reached cap: kind "limit",
+# passed on unchanged rather than reported as not well-formed.
+func testReadGpxPassesTheDecoderCapOn() {
+    testing.assertThrows("failOnAPointPastTheDecoderCap", "limit");
+}
+
 func testReadGpxReadsTheMetadata() {
     def doc as Document init readGpx(gpxFixture());
     testing.assertEqual($doc.name, "Innsbruck loop");

@@ -24,7 +24,8 @@
  * @throws {Error} when the text is not JSON, the root is not an object with a
  *   string `type`, a feature or geometry is not an object (a feature's
  *   `geometry` may be `null`), or a position is malformed or out of range;
- *   kind `"limit"` when geometry collections nest past `MAX_NESTING`
+ *   kind `"limit"` when geometry collections nest past `MAX_NESTING`, or the
+ *   text past `json.decode`'s nesting or node caps
  * @example
  *   def doc as geo.Document init geo.readGeojson(fs.readString("places.geojson"));
  */
@@ -33,6 +34,10 @@ export func readGeojson(text as string) {
     try {
         $root = json.decode($text);
     } catch (e) {
+        # a decoder cap (nesting, nodes) is kind "limit": passed on unchanged
+        if ($e.kind == "limit") {
+            throw $e;
+        }
         fail("not JSON: " + $e.message);
     }
     # Valid JSON that is not GeoJSON - an array, a scalar, an object with no

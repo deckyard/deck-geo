@@ -51,7 +51,8 @@ On a large track the copies cost memory: see [Memory](internal/memory.md).
 
 Every failure is an `Error` with `kind` `"geo"` (`ERROR_KIND`), except a
 reached cap - nesting past `MAX_NESTING`, a KMZ past its caps, `resample`
-past `MAX_RESAMPLE_POINTS` - which is kind `"limit"`.
+past `MAX_RESAMPLE_POINTS`, text past the caps of `json.decode` or
+`xml.decode` (passed on unchanged) - which is kind `"limit"`.
 
 ```jennifer
 try {

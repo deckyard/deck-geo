@@ -1190,20 +1190,29 @@ func childText(src as bytes, nodes as list of Node, name as string) {
  * @param node {Node} the element to decode
  * @param ns {map of string to string} the root's namespace bindings, prefix to URI
  * @return {xml.Value} the element as a tree
- * @throws {Error} when the fragment is not well-formed XML
+ * @throws {Error} when the fragment is not well-formed XML; kind `"limit"`
+ *   when it is past `xml.decode`'s nesting or node caps
  */
 func decodeLeaf(src as bytes, node as Node, ns as map of string to string) {
     def text as string init fragment($src, $node);
     try {
         return xml.decode($text, $ns);
-    } catch (e) { # lint-disable: L103
-        # An undeclared prefix, most likely; retried below with stand-ins.
+    } catch (e) {
+        # a decoder cap (nesting, nodes) is kind "limit": passed on unchanged;
+        # anything else is an undeclared prefix, most likely, retried below
+        # with stand-ins
+        if ($e.kind == "limit") {
+            throw $e;
+        }
     }
     def tree as xml.Value init xml.element("empty");
     def repaired as string init escapeUnknownEntities($text);
     try {
         $tree = xml.decode($repaired, withStandIns($repaired, $ns));
     } catch (e) {
+        if ($e.kind == "limit") {
+            throw $e;
+        }
         fail("<" + $node.name + "> is not well-formed: " + $e.message);
     }
     return $tree;
