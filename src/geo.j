@@ -64,7 +64,6 @@ use encoding;
 use regex;
 use meta;
 
-include "topics/version.j";
 include "topics/core.j";
 include "topics/model.j";
 include "topics/geodesy.j";

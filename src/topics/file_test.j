@@ -166,11 +166,6 @@ func testFileDispatchRejectsAnExtensionItDoesNotKnow() {
     testing.assertThrows("failOnSaveToAnUnknownExtension", ERROR_KIND);
 }
 
-func testVersionIsASemverString() {
-    testing.assertTrue(len(VERSION) > 0);
-    testing.assertTrue(strings.indexOf(VERSION, ".") > 0);
-}
-
 /** A path no test run can have created: a file in a directory that is not there. */
 def const NOWHERE as string init "no-such-directory-for-geo/missing";
 

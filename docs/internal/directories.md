@@ -22,7 +22,6 @@ late, so call order is free.
 ```
 src/geo.j                 the module boundary and every export
 src/geo_test.j            the white-box overlay
-src/topics/version.j      generated; VERSION
 src/topics/core.j         errors, entity codec, number formatting, clamping
 src/topics/model.j        Point, Segment, Track, Route, Document, Bounds
 src/topics/geodesy.j      haversine distance, bearings, dead reckoning
@@ -38,8 +37,7 @@ src/topics/gml.j          the GML geometry subset
 src/topics/file.j         whole files and the format dispatch
 ```
 
-Each has a co-located `_test.j` beside it, except the generated
-`version.j`, which opts out with a `# ci-no-overlay` line.
+Each has a co-located `_test.j` beside it.
 
 ## The rest
 

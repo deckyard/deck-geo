@@ -7,12 +7,6 @@ Every export of `@deckyard/geo`, by topic, called through the import alias:
 `import "@deckyard/geo/" as geo;` then `geo.open(path)`. Coordinates are WGS 84
 degrees, latitude before longitude in every signature; distances are metres.
 
-## Version
-
-| Constant | Value | Meaning |
-|---|---|---|
-| `VERSION` | `"0.1.0"` | The version of this deck. |
-
 ## Errors and precision
 
 | Constant | Value | Meaning |

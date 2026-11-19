@@ -98,7 +98,7 @@ inflates past `MAX_KMZ_ENTRY_BYTES` (16 MiB), or an archive past
 | [Cheatsheet](reference/cheatsheet.md) | the full API |
 | [Memory](internal/memory.md) | why the XML readers stream, with measurements |
 | [Directories](internal/directories.md) | the source tree |
-| [Versioning](internal/versioning.md) | git tags, `VERSION`, CI injection |
+| [Versioning](internal/versioning.md) | the manifest version, git tags, releases |
 
 Runnable programs:
 [`examples/`](https://github.com/deckyard/deck-geo/tree/main/examples).

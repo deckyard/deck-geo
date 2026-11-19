@@ -3,7 +3,8 @@
 
 # Versioning
 
-The git tag is the source of truth. Two places record a version.
+The manifest and the git tag record the version; the deck exports no version
+constant.
 
 ## deck.toml is authored
 
@@ -16,27 +17,8 @@ committed.
 So bump `deck.toml`, commit, then tag to match. `release.yml` refuses a tag
 that disagrees with the manifest.
 
-## src/topics/version.j is generated
-
-`geo.VERSION` says which build this is. `tools/inject-version.sh` stamps it
-from what `tools/version.sh` derives:
-
-| HEAD | `VERSION` |
-|---|---|
-| a stable tag | `0.2.0` |
-| anywhere else | `0.2.0-dev+14.9ebf3dd` |
-| nothing tagged yet | `<manifest version>-dev+<commits>.<sha>` |
-| no git checkout | whatever the manifest declares |
-
-Only plain `N.N.N` tags anchor a release. A tag with a `v` prefix or a
-prerelease suffix (`0.2.0-rc1`) is not a release: `tools/version.sh` does not
-anchor on one and `release.yml` rejects it.
-
-The dev form matches what `jennifer version` prints. Semver precedence ignores
-build metadata after `+`, so `0.2.0-dev+14.9ebf3dd` orders before `0.2.0`.
-
-CI injects the version before `fmt` and the header guard, since injection
-generates a `.j` file that both check.
+Only plain `N.N.N` tags are releases. `release.yml` rejects a tag with a `v`
+prefix or a prerelease suffix (`0.2.0-rc1`).
 
 ## Cutting a release
 
