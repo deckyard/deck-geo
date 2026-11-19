@@ -19,6 +19,7 @@
 # Reference
 
 - [Cheatsheet](reference/cheatsheet.md)
+- [Design](design.md)
 
 # Internal
 
