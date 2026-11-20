@@ -554,11 +554,32 @@ func testReadGpxFallsBackWhereTheScannerReadsDifferently() {
     # a namespace declared between the root and a point
     assertScanReadsDecodable("<gpx><trk xmlns:p=\"urn:p\"><trkseg><trkpt lat=\"1\" lon=\"2\"/>" +
         "</trkseg></trk></gpx>");
-    # 101 nested elements of one name: the scanner takes the outer as unclosed,
-    # running to the root's end, so the waypoint after it is not a root child
-    $doc = assertScanReadsDecodable("<gpx>" + strings.repeat("<a>", 102) +
-        strings.repeat("</a>", 102) + "<wpt lat=\"1\" lon=\"2\"/></gpx>");
+    # 102 nested elements of one name: the scanner takes the outer as unclosed,
+    # running to the root's end, so the waypoint after it is not a root child.
+    # jennifer-tiny's xml.decode stops at 64 levels, so there the decode fails
+    # instead and the scanner reads the document all the same.
+    def deep as string init deepGpx();
+    if (meta.BUILD == "tinygo") {
+        testing.assertThrows("decodeDeepGpx", "limit");
+        def src as bytes init convert.bytesFromString("utf-8", $deep);
+        testing.assertFalse(gpxTree($src, $deep).usable);
+        $doc = readGpx($deep);
+        testing.assertEqual($doc, readGpxScan($src));
+    } else {
+        $doc = assertScanReadsDecodable($deep);
+    }
     testing.assertEqual(len($doc.waypoints), 0);
+}
+
+/** A GPX document nesting 102 elements of one name before a waypoint. */
+func deepGpx() {
+    return "<gpx>" + strings.repeat("<a>", 102) + strings.repeat("</a>", 102) +
+        "<wpt lat=\"1\" lon=\"2\"/></gpx>";
+}
+
+/** Decode {@link deepGpx}, past jennifer-tiny's nesting cap. */
+func decodeDeepGpx() {
+    xml.decode(deepGpx());
 }
 
 func testTreeMatchesScanChecks() {
