@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - white-box tests for the scan topic.
 # Spliced into geo_test.j via include - run with:
@@ -8,7 +8,7 @@
 
 /** A string as the byte buffer the scanner works on. */
 func buffer(text as string) {
-    return convert.bytesFromString("utf-8", $text);
+    return encoding.encode("utf-8", $text);
 }
 
 /** The direct children of a document's root element. */
@@ -360,7 +360,7 @@ func testToUtf8RejectsWhatItCannotRead() {
 
 # The root's xmlns declarations, prefix to URI, with the default under "".
 func testNamespaceBindingsReadsTheRoot() {
-    def src as bytes init convert.bytesFromString(
+    def src as bytes init encoding.encode(
         "utf-8",
         "<gpx xmlns=\"urn:d\" xmlns:a=\"urn:a\" version=\"1.1\"><wpt/></gpx>");
     def ns as map of string to string init namespaceBindings($src, rootNode($src));
@@ -368,13 +368,13 @@ func testNamespaceBindingsReadsTheRoot() {
     testing.assertEqual($ns[""], "urn:d");
     testing.assertEqual($ns["a"], "urn:a");
     # A root with an undeclared prefix of its own still yields what it declares.
-    def damaged as bytes init convert.bytesFromString("utf-8", "<x:gpx xmlns:a=\"urn:a\"/>");
+    def damaged as bytes init encoding.encode("utf-8", "<x:gpx xmlns:a=\"urn:a\"/>");
     testing.assertEqual(namespaceBindings($damaged, rootNode($damaged))["a"], "urn:a");
 }
 
 # A leaf using a prefix nobody declared is damage, and still decodes.
 func testDecodeLeafStandsInForAnUndeclaredPrefix() {
-    def src as bytes init convert.bytesFromString(
+    def src as bytes init encoding.encode(
         "utf-8",
         "<r><p:pt lat=\"1\"><p:name>n</p:name></p:pt></r>");
     def leaf as Node init childNodes($src, rootNode($src).openEnd, rootNode($src).innerEnd)[0];
@@ -438,11 +438,12 @@ func testNestedCloseCapsSameNameNesting() {
     # MAX_NESTING + 1 nested <f> under one more: deeper than any reader takes,
     # so the outer element reads as unclosed rather than costing a scan per level
     def inner as int init MAX_NESTING + 1;
-    def doc as string init strings.repeat("<f>", $inner + 1) + strings.repeat("</f>", $inner + 1);
+    def doc as string init strings.replicate("<f>", $inner + 1) +
+        strings.replicate("</f>", $inner + 1);
     def src as bytes init buffer($doc);
     testing.assertEqual(matchingClose($src, "f", 3, len($src)), -1);
     # one level less is read: the outer close is the last four bytes
-    def ok as string init strings.repeat("<f>", $inner) + strings.repeat("</f>", $inner);
+    def ok as string init strings.replicate("<f>", $inner) + strings.replicate("</f>", $inner);
     def okSrc as bytes init buffer($ok);
     testing.assertEqual(matchingClose($okSrc, "f", 3, len($okSrc)), len($ok) - 4);
 }
@@ -451,7 +452,7 @@ func testNestedCloseIsLinearInOpenTagPrefixes() {
     # One nested <trk>, then 80,000 `<trkx` inside a comment. Searching for the
     # close tag again for every `<trkx` hit made this quadratic: 2.8 s here on
     # the old scanner, against a few milliseconds when each position is kept.
-    def doc as string init "<gpx><trk><trk></trk><!--" + strings.repeat("<trkx", 80000) +
+    def doc as string init "<gpx><trk><trk></trk><!--" + strings.replicate("<trkx", 80000) +
         "--></trk></gpx>";
     def started as int init time.now().nanos;
     def kids as list of Node init rootChildren($doc);

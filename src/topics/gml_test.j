@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - white-box tests for the gml topic.
 # Spliced into geo_test.j via include - run with:
@@ -215,8 +215,8 @@ func failOnGmlCoordinateOutsideTheWorld() {
 }
 
 func failOnOverNestedGml() {
-    def deep as string init strings.repeat("<app:wrap>", MAX_NESTING + 2);
-    def shut as string init strings.repeat("</app:wrap>", MAX_NESTING + 2);
+    def deep as string init strings.replicate("<app:wrap>", MAX_NESTING + 2);
+    def shut as string init strings.replicate("</app:wrap>", MAX_NESTING + 2);
     readGml("<wfs:FeatureCollection>" + $deep + $shut + "</wfs:FeatureCollection>");
 }
 
@@ -294,7 +294,7 @@ func testGmlRoundTrip() {
 }
 
 func testGmlDimension() {
-    def src as bytes init convert.bytesFromString(
+    def src as bytes init encoding.encode(
         "utf-8",
         "<a><gml:posList srsDimension=\"3\">0 0 0</gml:posList><b /></a>");
     def root as Node init rootNode($src);

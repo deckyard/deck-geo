@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - the shared primitives every other topic builds on.
 # Spliced into geo.j via include - not a standalone module.
@@ -66,7 +66,7 @@ func quoted(text as string) {
     if (len($text) <= 48) {
         return "\"" + $text + "\"";
     }
-    return "\"" + strings.substring($text, 0, 48) + "\"... (" + convert.toString(len($text)) +
+    return "\"" + $text[..48] + "\"... (" + convert.toString(len($text)) +
         " characters)";
 }
 
@@ -113,7 +113,7 @@ func localName(name as string) {
     if ($colon < 0) {
         return $name;
     }
-    return strings.substring($name, $colon + 1, len($name));
+    return $name[$colon + 1..len($name)];
 }
 
 /** The characters XML 1.0 cannot hold, as an RE2 class. */
@@ -178,14 +178,14 @@ func entityBody(body as string) {
  * @return {string} the character, or `""` when the body is not numeric
  */
 func numericEntity(body as string) {
-    if (len($body) < 2 or strings.substring($body, 0, 1) != "#") {
+    if (len($body) < 2 or $body[..1] != "#") {
         return "";
     }
-    def digits as string init strings.substring($body, 1, len($body));
+    def digits as string init $body[1..len($body)];
     def hex as bool init false;
-    if (len($digits) > 1 and strings.lower(strings.substring($digits, 0, 1)) == "x") {
+    if (len($digits) > 1 and strings.lower($digits[..1]) == "x") {
         $hex = true;
-        $digits = strings.substring($digits, 1, len($digits));
+        $digits = $digits[1..len($digits)];
     }
     def code as int init digitsToInt($digits, $hex);
     if ($code <= 0) {
@@ -281,12 +281,12 @@ func resolveReference(part as string) {
     if ($semi < 0) {
         return "&" + $part;
     }
-    def body as string init strings.substring($part, 0, $semi);
+    def body as string init $part[..$semi];
     def replacement as string init entityBody($body);
     if ($replacement == "") {
         return "&" + $part;
     }
-    return $replacement + strings.substring($part, $semi + 1, len($part));
+    return $replacement + $part[$semi + 1..len($part)];
 }
 
 /**

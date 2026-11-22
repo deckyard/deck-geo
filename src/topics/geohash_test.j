@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - white-box tests for the geohash topic.
 # Spliced into geo_test.j via include - run with:
@@ -29,16 +29,14 @@ func testGeohashIsAPrefixCode() {
     def p as Point init point(47.2692, 11.4041);
     def long as string init geohash($p, 9);
     for (def n in [1, 3, 6, 8]) {
-        testing.assertEqual(geohash($p, $n), strings.substring($long, 0, $n));
+        testing.assertEqual(geohash($p, $n), $long[..$n]);
     }
 }
 
 func testNeighboursShareAPrefix() {
     def here as Point init point(47.2692, 11.4041);
     def near as Point init destination($here, 45.0, 20.0);
-    testing.assertEqual(
-        strings.substring(geohash($here, 6), 0, 6),
-        strings.substring(geohash($near, 6), 0, 6));
+    testing.assertEqual(geohash($here, 6)[..6], geohash($near, 6)[..6]);
 }
 
 func failOnZeroLengthGeohash() {

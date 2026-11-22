@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - white-box tests for the file topic.
 # Spliced into geo_test.j via include - run with:
@@ -199,9 +199,9 @@ func testOpenReadsADeclaredLatin1File() {
     def head as string init "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>" +
         "<gpx><wpt lat=\"1\" lon=\"2\"><name>Ca";
     def parts as list of bytes init [
-        convert.bytesFromString("utf-8", $head),
+        encoding.encode("utf-8", $head),
         encoding.encode("iso-8859-1", "\u00f1"),
-        convert.bytesFromString("utf-8", "on</name></wpt></gpx>")
+        encoding.encode("utf-8", "on</name></wpt></gpx>")
     ];
     # an older Garmin export: Latin-1, and saying so in its declaration
     def target as string init path.join($dir, "old.gpx");
@@ -215,13 +215,13 @@ func testReadKmzPrefersDocKml() {
     def entries as list of archive.Entry init [
         archive.Entry{
             name: "files/legend.kml",
-            data: convert.bytesFromString("utf-8", $legend),
+            data: encoding.encode("utf-8", $legend),
             mode: 420,
             mtime: 0
         },
         archive.Entry{
             name: KMZ_ENTRY,
-            data: convert.bytesFromString("utf-8", writeKml(fileFixture())),
+            data: encoding.encode("utf-8", writeKml(fileFixture())),
             mode: 420,
             mtime: 0
         }
@@ -231,7 +231,7 @@ func testReadKmzPrefersDocKml() {
 }
 
 func testKmzEntryIndexFallsBackToARootKmlThenAnyKml() {
-    def nothing as bytes init convert.bytesFromString("utf-8", "");
+    def nothing as bytes init encoding.encode("utf-8", "");
     def nested as archive.Entry init archive.Entry{
         name: "a/x.kml",
         data: $nothing,

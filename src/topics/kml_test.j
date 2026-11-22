@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - white-box tests for the kml topic.
 # Spliced into geo_test.j via include - run with:
@@ -133,8 +133,8 @@ func failOnCoordinatesOutsideTheWorld() {
 func failOnOverNestedKml() {
     # 10,000 nested folders is a 170 KB file that would otherwise take half an
     # hour to walk: the cost of descending is quadratic in the depth
-    def deep as string init strings.repeat("<Folder>", MAX_NESTING + 2);
-    def shut as string init strings.repeat("</Folder>", MAX_NESTING + 2);
+    def deep as string init strings.replicate("<Folder>", MAX_NESTING + 2);
+    def shut as string init strings.replicate("</Folder>", MAX_NESTING + 2);
     readKml("<kml><Document>" + $deep + $shut + "</Document></kml>");
 }
 
@@ -143,8 +143,8 @@ func testReadKmlRefusesPathologicalNesting() {
 }
 
 func testReadKmlAcceptsNestingUpToTheCeiling() {
-    def deep as string init strings.repeat("<Folder>", 20);
-    def shut as string init strings.repeat("</Folder>", 20);
+    def deep as string init strings.replicate("<Folder>", 20);
+    def shut as string init strings.replicate("</Folder>", 20);
     def mark as string init "<Placemark><Point><coordinates>11,47</coordinates>" +
         "</Point></Placemark>";
     def doc as Document init readKml("<kml><Document>" + $deep + $mark + $shut + "</Document></kml>");
@@ -181,7 +181,7 @@ func testWhitespaceFields() {
 }
 
 func failOnALongTupleWithNoComma() {
-    readKml("<kml><Placemark><Point><coordinates>" + strings.repeat("1", 200000) +
+    readKml("<kml><Placemark><Point><coordinates>" + strings.replicate("1", 200000) +
         "</coordinates></Point></Placemark></kml>");
 }
 
@@ -285,13 +285,13 @@ func testWriteKmzHoldsOneDocKml() {
 func testReadKmzFindsTheKmlPastOtherEntries() {
     def icon as archive.Entry init archive.Entry{
         name: "files/icon.png",
-        data: convert.bytesFromString("utf-8", "not really a png"),
+        data: encoding.encode("utf-8", "not really a png"),
         mode: 0o644,
         mtime: 0
     };
     def doc as archive.Entry init archive.Entry{
         name: "doc.kml",
-        data: convert.bytesFromString("utf-8", kmlFixture()),
+        data: encoding.encode("utf-8", kmlFixture()),
         mode: 0o644,
         mtime: 0
     };
@@ -300,13 +300,13 @@ func testReadKmzFindsTheKmlPastOtherEntries() {
 }
 
 func failOnKmzThatIsNotAZip() {
-    readKmz(convert.bytesFromString("utf-8", "just text"));
+    readKmz(encoding.encode("utf-8", "just text"));
 }
 
 func failOnKmzWithNoKml() {
     def only as archive.Entry init archive.Entry{
         name: "readme.txt",
-        data: convert.bytesFromString("utf-8", "nothing here"),
+        data: encoding.encode("utf-8", "nothing here"),
         mode: 0o644,
         mtime: 0
     };
@@ -322,10 +322,10 @@ func failOnKmzPastTheEntryCap() {
     # valid KML padded one byte past the cap: deflates to a few KB, so the
     # archive is small and only its inflated size is refused
     def text as string init kmlFixture();
-    $text = $text + strings.repeat(" ", MAX_KMZ_ENTRY_BYTES + 1 - len($text));
+    $text = $text + strings.replicate(" ", MAX_KMZ_ENTRY_BYTES + 1 - len($text));
     def doc as archive.Entry init archive.Entry{
         name: "doc.kml",
-        data: convert.bytesFromString("utf-8", $text),
+        data: encoding.encode("utf-8", $text),
         mode: 0o644,
         mtime: 0
     };
@@ -350,7 +350,7 @@ func failOnKmzPastTheTotalCap() {
     def entries as list of archive.Entry init [];
     $entries[] = archive.Entry{
         name: "doc.kml",
-        data: convert.bytesFromString("utf-8", kmlFixture()),
+        data: encoding.encode("utf-8", kmlFixture()),
         mode: 0o644,
         mtime: 0
     };

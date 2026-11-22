@@ -164,8 +164,9 @@ returning a value that could also be a real answer.
 
 ## Dependencies on the interpreter
 
-- Floor `>=0.26.0` for `jennifer` and `jennifer-tiny`, raised for
-  `xml.decode` with a namespace map (`jennifer`'s M28.34).
+- Floor `>=0.27.0` for `jennifer` and `jennifer-tiny`, for the UTF-8 codecs
+  of `encoding.encode` / `decode` and `strings.replicate`; `xml.decode` with
+  a namespace map (`jennifer`'s M28.34) needs 0.26.0.
 - A reached cap as kind `"limit"` (M28.54, M28.55; the deck's caps moved
   under M28.57).
 - The borrowed read-only parameters and copy-free returns of

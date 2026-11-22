@@ -1,7 +1,7 @@
 #!/usr/bin/env -S jennifer run
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 /**
  * fuzz - throw malformed input at every reader and assert it holds.
@@ -63,7 +63,7 @@ func broke(format as string, what as string, input as string) {
     $failures = $failures + 1;
     def shown as string init $input;
     if (len($shown) > 120) {
-        $shown = strings.substring($shown, 0, 120) + "...";
+        $shown = $shown[..120] + "...";
     }
     io.printf("BROKE %s: %s\n  input: %s\n", $format, $what, $shown);
 }
@@ -217,7 +217,7 @@ func checkSecondRead(
 func bend(text as string, at as int) {
     def replacements as list of string init ["<", ">", "\"", "&", "/", "x", " ", ";", "9", "-"];
     def pick as string init $replacements[math.randInt(0, len($replacements) - 1)];
-    return strings.substring($text, 0, $at) + $pick + strings.substring($text, $at + 1, len($text));
+    return $text[..$at] + $pick + $text[$at + 1..len($text)];
 }
 
 /** Values of the wrong type or size, put where a number or an array was. */
@@ -265,7 +265,7 @@ func swapValue(text as string, from as int, value as string) {
             $end = $end + 1;
         }
     }
-    return strings.substring($text, 0, $at) + $value + strings.substring($text, $end, len($text));
+    return $text[..$at] + $value + $text[$end..len($text)];
 }
 
 /**
@@ -286,7 +286,7 @@ for (def format in FORMATS) {
 
     # truncated at every offset: the shape of an interrupted write
     for (def at as int init 0; $at < len($whole); $at = $at + 7) {
-        drive($format, strings.substring($whole, 0, $at));
+        drive($format, $whole[..$at]);
     }
 
     # one byte bent, at every eleventh offset
@@ -299,8 +299,8 @@ for (def format in FORMATS) {
         def from as int init math.randInt(0, len($whole) - 1);
         def size as int init math.randInt(1, 40);
         def end as int init math.min($from + $size, len($whole));
-        def spliced as string init strings.substring($whole, 0, $from) +
-            strings.substring($whole, $end, len($whole));
+        def spliced as string init $whole[..$from] +
+            $whole[$end..len($whole)];
         drive($format, $spliced);
     }
 

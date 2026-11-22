@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - white-box tests for the geojson topic.
 # Spliced into geo_test.j via include - run with:
@@ -217,7 +217,7 @@ func testReadGeojsonRefusesPathologicalNesting() {
 }
 
 func failOnJsonPastTheDecoderCap() {
-    readGeojson(strings.repeat("[", 1100) + strings.repeat("]", 1100));
+    readGeojson(strings.replicate("[", 1100) + strings.replicate("]", 1100));
 }
 
 # Text past json.decode's nesting cap is a reached cap: kind "limit", passed

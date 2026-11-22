@@ -22,7 +22,7 @@ truncating a hash coarsens it:
 
 ```jennifer
 def hash as string init geo.geohash($p, 9);
-strings.substring($hash, 0, 5);   # the same as geo.geohash($p, 5)
+$hash[..5];   # the same as geo.geohash($p, 5)
 ```
 
 (`testGeohashIsAPrefixCode`.)

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - white-box tests for the core topic.
 # Spliced into geo_test.j via include - run with:
@@ -211,7 +211,7 @@ func testQuotedBoundsWhatAnErrorMessageCanCarry() {
     testing.assertEqual(quoted(""), "\"\"");
     # a hostile file can put half a megabyte in an attribute; the message that
     # quotes it must not be half a megabyte long
-    def huge as string init strings.repeat("9", 500000);
+    def huge as string init strings.replicate("9", 500000);
     def message as string init quoted($huge);
     testing.assertTrue(len($message) < 100);
     testing.assertContains($message, "500000 characters");

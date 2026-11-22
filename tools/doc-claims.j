@@ -1,7 +1,7 @@
 #!/usr/bin/env -S jennifer run
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 /**
  * doc-claims - assert that the values the guides print are what the code
@@ -142,7 +142,7 @@ def long as string init geo.geohash(innsbruck(), 9);
 claimText(
     "docs/guide/addressing.md",
     "geohash(innsbruck, 9) truncated to 5",
-    strings.substring($long, 0, 5),
+    $long[..5],
     geo.geohash(innsbruck(), 5));
 
 # --- guide/model.md --------------------------------------------------------

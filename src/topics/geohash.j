@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - geohashes: a coordinate as a short string that sorts by locality.
 # Spliced into geo.j via include - not a standalone module.
@@ -69,7 +69,7 @@ export func geohash(p as Point, length as int) {
         $even = not $even;
         $bit = $bit + 1;
         if ($bit == 5) {
-            $out = $out + strings.substring(GEOHASH_ALPHABET, $value, $value + 1);
+            $out = $out + GEOHASH_ALPHABET[$value..$value + 1];
             $bit = 0;
             $value = 0;
         }

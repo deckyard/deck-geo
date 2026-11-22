@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - whole files, and the format dispatch over them.
 # Spliced into geo.j via include - not a standalone module.
@@ -148,7 +148,7 @@ export func readText(text as string, format as string) {
     if ($format == "geojson") {
         # A file read with fs.readString keeps its byte-order mark.
         if (strings.startsWith($text, "\uFEFF")) {
-            return readGeojson(strings.substring($text, 1, len($text)));
+            return readGeojson($text[1..len($text)]);
         }
         return readGeojson($text);
     }

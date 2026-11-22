@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - KML 2.2 and its zipped form, KMZ.
 # Spliced into geo.j via include - not a standalone module.
@@ -60,7 +60,7 @@ export def const MAX_KMZ_TOTAL_BYTES as int init 67108864;
  *   def doc as geo.Document init geo.readKml(fs.readString("places.kml"));
  */
 export func readKml(text as string) {
-    return readKmlBytes(convert.bytesFromString("utf-8", $text));
+    return readKmlBytes(encoding.encode("utf-8", $text));
 }
 
 /**
@@ -574,7 +574,7 @@ func kmzEntryIndex(entries as list of archive.Entry) {
 export func writeKmz(doc as Document) {
     def entry as archive.Entry init archive.Entry{
         name: KMZ_ENTRY,
-        data: convert.bytesFromString("utf-8", writeKml($doc)),
+        data: encoding.encode("utf-8", writeKml($doc)),
         mode: 0o644,
         mtime: 0
     };

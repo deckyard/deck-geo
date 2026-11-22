@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - the GML geometry subset.
 # Spliced into geo.j via include - not a standalone module.
@@ -48,7 +48,7 @@ export def const GML_CRS as string init "urn:ogc:def:crs:EPSG::4326";
  *   def doc as geo.Document init geo.readGml(fs.readString("features.gml"));
  */
 export func readGml(text as string) {
-    return readGmlBytes(convert.bytesFromString("utf-8", $text));
+    return readGmlBytes(encoding.encode("utf-8", $text));
 }
 
 /**

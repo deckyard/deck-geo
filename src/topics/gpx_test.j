@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - white-box tests for the gpx topic.
 # Spliced into geo_test.j via include - run with:
@@ -28,8 +28,8 @@ func gpxFixture() {
 }
 
 func failOnAPointPastTheDecoderCap() {
-    readGpx('<gpx version="1.1"><wpt lat="47" lon="11">' + strings.repeat("<x>", 1100) +
-        strings.repeat("</x>", 1100) + "</wpt></gpx>");
+    readGpx('<gpx version="1.1"><wpt lat="47" lon="11">' + strings.replicate("<x>", 1100) +
+        strings.replicate("</x>", 1100) + "</wpt></gpx>");
 }
 
 # A point past xml.decode's nesting cap is a reached cap: kind "limit",
@@ -365,7 +365,7 @@ def struct GpxRead {
 func scanGpxRead(text as string) {
     def out as GpxRead init GpxRead{doc: document(), error: ""};
     try {
-        $out.doc = readGpxScan(convert.bytesFromString("utf-8", $text));
+        $out.doc = readGpxScan(encoding.encode("utf-8", $text));
     } catch (e) {
         $out.error = $e.kind + ": " + $e.message;
     }
@@ -379,7 +379,7 @@ func scanGpxRead(text as string) {
  * @return {GpxRead} what it read, or `kind: message`
  */
 func treeGpxRead(text as string) {
-    def src as bytes init convert.bytesFromString("utf-8", $text);
+    def src as bytes init encoding.encode("utf-8", $text);
     def tree as GpxTree init gpxTree($src, $text);
     testing.assertTrue($tree.usable);
     def out as GpxRead init GpxRead{doc: document(), error: ""};
@@ -411,7 +411,7 @@ func assertTreeReadsAsScan(text as string) {
  */
 func assertScanReadsDecodable(text as string) {
     testing.assertEqual(xml.localName(xml.decode($text)), "gpx");
-    def src as bytes init convert.bytesFromString("utf-8", $text);
+    def src as bytes init encoding.encode("utf-8", $text);
     testing.assertFalse(gpxTree($src, $text).usable);
     def doc as Document init readGpx($text);
     testing.assertEqual($doc, readGpxScan($src));
@@ -507,8 +507,8 @@ func testReadGpxFallsBackWhenTheDecodeFails() {
     testing.assertFalse(gpxTree($src, "<gpx><name>10&deg;</name></gpx>").usable);
     testing.assertEqual(readGpx("<gpx><name>10&deg;</name></gpx>").name, "10&deg;");
     # past the decoder's nesting cap (1000 levels; 64 on jennifer-tiny)
-    def deep as string init "<gpx><wpt lat=\"1\" lon=\"2\"/>" + strings.repeat("<a>", 1001) +
-        strings.repeat("</a>", 1001) + "</gpx>";
+    def deep as string init "<gpx><wpt lat=\"1\" lon=\"2\"/>" + strings.replicate("<a>", 1001) +
+        strings.replicate("</a>", 1001) + "</gpx>";
     testing.assertFalse(gpxTree(buffer($deep), $deep).usable);
     testing.assertEqual(len(readGpx($deep).waypoints), 1);
 }
@@ -518,7 +518,7 @@ func testReadGpxFallsBackPastTheNodeCap() {
     # (2^18 on jennifer-tiny). The scanner steps over <extensions> in a few
     # native searches.
     def text as string init "<gpx><wpt lat=\"1\" lon=\"2\"><name>A</name></wpt><extensions>" +
-        strings.repeat("<x/>", 2097153) + "</extensions></gpx>";
+        strings.replicate("<x/>", 2097153) + "</extensions></gpx>";
     testing.assertFalse(gpxTree(buffer($text), $text).usable);
     def doc as Document init readGpx($text);
     testing.assertEqual(len($doc.waypoints), 1);
@@ -538,7 +538,7 @@ func testReadGpxFallsBackWhereTheScannerReadsDifferently() {
     # a sign in a character reference: xml.decode refuses it (Jennifer 0.26),
     # so the scanner reads the file and leaves the reference standing
     def signed as string init "<gpx><trk><name>&#+65;</name></trk></gpx>";
-    testing.assertFalse(gpxTree(convert.bytesFromString("utf-8", $signed), $signed).usable);
+    testing.assertFalse(gpxTree(encoding.encode("utf-8", $signed), $signed).usable);
     $doc = readGpx($signed);
     testing.assertEqual($doc.tracks[0].name, "&#+65;");
     # a processing instruction inside the root
@@ -561,7 +561,7 @@ func testReadGpxFallsBackWhereTheScannerReadsDifferently() {
     def deep as string init deepGpx();
     if (meta.BUILD == "tinygo") {
         testing.assertThrows("decodeDeepGpx", "limit");
-        def src as bytes init convert.bytesFromString("utf-8", $deep);
+        def src as bytes init encoding.encode("utf-8", $deep);
         testing.assertFalse(gpxTree($src, $deep).usable);
         $doc = readGpx($deep);
         testing.assertEqual($doc, readGpxScan($src));
@@ -573,7 +573,7 @@ func testReadGpxFallsBackWhereTheScannerReadsDifferently() {
 
 /** A GPX document nesting 102 elements of one name before a waypoint. */
 func deepGpx() {
-    return "<gpx>" + strings.repeat("<a>", 102) + strings.repeat("</a>", 102) +
+    return "<gpx>" + strings.replicate("<a>", 102) + strings.replicate("</a>", 102) +
         "<wpt lat=\"1\" lon=\"2\"/></gpx>";
 }
 
@@ -664,7 +664,7 @@ func fuzzGpxFixture() {
 func fuzzBend(text as string, at as int) {
     def replacements as list of string init ["<", ">", "\"", "&", "/", "x", " ", ";", "9", "-"];
     def pick as string init $replacements[math.randInt(0, len($replacements) - 1)];
-    return strings.substring($text, 0, $at) + $pick + strings.substring($text, $at + 1, len($text));
+    return $text[..$at] + $pick + $text[$at + 1..len($text)];
 }
 
 /** fuzz.j's `HOSTILE` values. */
@@ -712,7 +712,7 @@ func fuzzSwap(text as string, from as int, value as string) {
             $end = $end + 1;
         }
     }
-    return strings.substring($text, 0, $at) + $value + strings.substring($text, $end, len($text));
+    return $text[..$at] + $value + $text[$end..len($text)];
 }
 
 /**
@@ -725,7 +725,7 @@ func fuzzGpxInputs() {
     def whole as string init fuzzGpxFixture();
     def out as list of string init [$whole];
     for (def at as int init 0; $at < len($whole); $at = $at + 7) {
-        $out[] = strings.substring($whole, 0, $at);
+        $out[] = $whole[..$at];
     }
     for (def at as int init 0; $at < len($whole); $at = $at + 11) {
         $out[] = fuzzBend($whole, $at);
@@ -734,7 +734,7 @@ func fuzzGpxInputs() {
         def from as int init math.randInt(0, len($whole) - 1);
         def size as int init math.randInt(1, 40);
         def end as int init math.min($from + $size, len($whole));
-        $out[] = strings.substring($whole, 0, $from) + strings.substring($whole, $end, len($whole));
+        $out[] = $whole[..$from] + $whole[$end..len($whole)];
     }
     for (def n as int init 0; $n < 120; $n = $n + 1) {
         def value as string init FUZZ_HOSTILE[math.randInt(0, len(FUZZ_HOSTILE) - 1)];
@@ -759,7 +759,7 @@ func testReadGpxTreeMatchesScanOnEveryFuzzInput() {
     testing.assertEqual(len($inputs), 1 + ($size + 6) // 7 + ($size + 10) // 11 + 60 + 120 + 40);
     def compared as int init 0;
     for (def text in $inputs) {
-        if (gpxTree(convert.bytesFromString("utf-8", $text), $text).usable) {
+        if (gpxTree(encoding.encode("utf-8", $text), $text).usable) {
             testing.assertEqual(treeGpxRead($text), scanGpxRead($text));
             $compared = $compared + 1;
         }
@@ -777,7 +777,7 @@ func testDecodeNodesCountsElementsAttributesAndText() {
 func testDecodeFitsSkipsTheDecodeOnlyOnTinyPastItsCap() {
     # 262,144 empty elements inside <gpx>: 262,145 elements, '>' 262,146 less
     # '><' 262,145 = 1 text run, 262,146 in all - two past the cap.
-    def big as string init "<gpx>" + strings.repeat("<p/>", 262144) + "</gpx>";
+    def big as string init "<gpx>" + strings.replicate("<p/>", 262144) + "</gpx>";
     testing.assertEqual(decodeNodes($big), 262146);
     testing.assertFalse(decodeFits($big, "tinygo"));
     testing.assertTrue(decodeFits($big, "go"));

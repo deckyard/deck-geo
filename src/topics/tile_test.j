@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - white-box tests for the tile topic.
 # Spliced into geo_test.j via include - run with:
@@ -131,7 +131,7 @@ func testQuadkeyOfTheFourQuadrants() {
 func testQuadkeyDescendsFromItsParent() {
     def parent as Tile init Tile{x: 8711, y: 5744, z: 14};
     def child as Tile init Tile{x: 17422, y: 11489, z: 15};
-    testing.assertEqual(strings.substring(quadkey($child), 0, 14), quadkey($parent));
+    testing.assertEqual(quadkey($child)[..14], quadkey($parent));
 }
 
 func testClampIndexAndClampLatitude() {

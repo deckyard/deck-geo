@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - the element scanner the XML codecs walk a document with.
 # Spliced into geo.j via include - not a standalone module.
@@ -37,31 +37,31 @@ def const LT as int init 0x3c;
 # than converted on every call.
 
 /** `<` as a one-byte buffer, for `binary.indexOf`. */
-def const LT_PROBE as bytes init convert.bytesFromString("utf-8", "<");
+def const LT_PROBE as bytes init encoding.encode("utf-8", "<");
 
 /** `>` as a one-byte buffer. */
-def const GT_PROBE as bytes init convert.bytesFromString("utf-8", ">");
+def const GT_PROBE as bytes init encoding.encode("utf-8", ">");
 
 /** A double quote as a one-byte buffer. */
-def const DQUOTE_PROBE as bytes init convert.bytesFromString("utf-8", "\"");
+def const DQUOTE_PROBE as bytes init encoding.encode("utf-8", "\"");
 
 /** A single quote as a one-byte buffer. */
-def const SQUOTE_PROBE as bytes init convert.bytesFromString("utf-8", "'");
+def const SQUOTE_PROBE as bytes init encoding.encode("utf-8", "'");
 
 /** The opening of a CDATA section. */
-def const CDATA_PROBE as bytes init convert.bytesFromString("utf-8", "<![CDATA[");
+def const CDATA_PROBE as bytes init encoding.encode("utf-8", "<![CDATA[");
 
 /** An equals sign as a one-byte buffer, for walking attributes. */
-def const EQUALS_PROBE as bytes init convert.bytesFromString("utf-8", "=");
+def const EQUALS_PROBE as bytes init encoding.encode("utf-8", "=");
 
 /** The byte-order mark some editors put in front of a UTF-8 file. */
-def const UTF8_BOM as bytes init convert.bytesFromString("utf-8", "\uFEFF");
+def const UTF8_BOM as bytes init encoding.encode("utf-8", "\uFEFF");
 
 /** The opening of an XML declaration. */
-def const XML_DECL_PROBE as bytes init convert.bytesFromString("utf-8", "<?xml");
+def const XML_DECL_PROBE as bytes init encoding.encode("utf-8", "<?xml");
 
 /** The opening of a comment. */
-def const COMMENT_PROBE as bytes init convert.bytesFromString("utf-8", "<!--");
+def const COMMENT_PROBE as bytes init encoding.encode("utf-8", "<!--");
 
 /** The byte value of `>`. */
 def const GT as int init 0x3e;
@@ -474,16 +474,16 @@ func openTagAt(src as bytes, openProbe as bytes, from as int, limit as int) {
  * One-byte buffers, appended to a name probe by {@link exactTagAt}.
  */
 def const NAME_ENDS as list of bytes init [
-    convert.bytesFromString("utf-8", ">"),
-    convert.bytesFromString("utf-8", "/"),
-    convert.bytesFromString("utf-8", " "),
-    convert.bytesFromString("utf-8", "\n"),
-    convert.bytesFromString("utf-8", "\t"),
-    convert.bytesFromString("utf-8", "\r")
+    encoding.encode("utf-8", ">"),
+    encoding.encode("utf-8", "/"),
+    encoding.encode("utf-8", " "),
+    encoding.encode("utf-8", "\n"),
+    encoding.encode("utf-8", "\t"),
+    encoding.encode("utf-8", "\r")
 ];
 
 /** `<!`, which opens a comment, a CDATA section or a declaration. */
-def const MARKUP_PROBE as bytes init convert.bytesFromString("utf-8", "<!");
+def const MARKUP_PROBE as bytes init encoding.encode("utf-8", "<!");
 
 /**
  * The first tag whose name is exactly a probe's, by one native search per
@@ -701,7 +701,7 @@ func matchesAt(src as bytes, at as int, probe as bytes) {
     if ($at < 0 or $at + $size > len($src)) {
         return false;
     }
-    return binary.slice($src, $at, $at + $size) == $probe;
+    return $src[$at..$at + $size] == $probe;
 }
 
 /**
@@ -714,7 +714,7 @@ func matchesAt(src as bytes, at as int, probe as bytes) {
  * @return {int} the offset just past it, or `limit` when it is not there
  */
 func skipPast(src as bytes, from as int, literal as string, limit as int) {
-    def needle as bytes init convert.bytesFromString("utf-8", $literal);
+    def needle as bytes init encoding.encode("utf-8", $literal);
     def found as int init indexOfByte($src, $needle, $from, $limit);
     if ($found < 0 or $found + len($needle) > $limit) {
         return $limit;
@@ -729,7 +729,7 @@ func skipPast(src as bytes, from as int, literal as string, limit as int) {
  * @return {bytes} its UTF-8 bytes
  */
 func probeOf(literal as string) {
-    return convert.bytesFromString("utf-8", $literal);
+    return encoding.encode("utf-8", $literal);
 }
 
 /**
@@ -747,7 +747,7 @@ func byteText(src as bytes, from as int, limit as int) {
     }
     def out as string init "";
     try {
-        $out = convert.stringFromBytes("utf-8", binary.slice($src, $from, $limit));
+        $out = encoding.decode("utf-8", $src[$from..$limit]);
     } catch (e) {
         fail("the document is not valid UTF-8 at byte " + convert.toString($from) +
             ", and declares no other encoding");
@@ -787,7 +787,7 @@ func toUtf8(src as bytes) {
     } catch (e) {
         fail("the document is in " + quoted($codec) + ", an encoding this deck does not read");
     }
-    return convert.bytesFromString("utf-8", $text);
+    return encoding.encode("utf-8", $text);
 }
 
 /**
@@ -810,7 +810,7 @@ func declaredEncoding(src as bytes) {
     }
     def decl as string init "";
     try {
-        $decl = strings.lower(convert.stringFromBytes("utf-8", binary.slice($src, $at, $end)));
+        $decl = strings.lower(encoding.decode("utf-8", $src[$at..$end]));
     } catch (e) {
         return "";
     }
@@ -818,20 +818,20 @@ func declaredEncoding(src as bytes) {
     if ($key < 0) {
         return "";
     }
-    def rest as string init strings.trimLeft(strings.substring($decl, $key + 8, len($decl)));
+    def rest as string init strings.trimLeft($decl[$key + 8..len($decl)]);
     if (not strings.startsWith($rest, "=")) {
         return "";
     }
-    $rest = strings.trimLeft(strings.substring($rest, 1, len($rest)));
+    $rest = strings.trimLeft($rest[1..len($rest)]);
     if (len($rest) < 2) {
         return "";
     }
-    def quote as string init strings.substring($rest, 0, 1);
-    def close as int init strings.indexOf(strings.substring($rest, 1, len($rest)), $quote);
+    def quote as string init $rest[..1];
+    def close as int init strings.indexOf($rest[1..len($rest)], $quote);
     if ($close < 0) {
         return "";
     }
-    return codecFor(strings.trim(strings.substring($rest, 1, $close + 1)));
+    return codecFor(strings.trim($rest[1..$close + 1]));
 }
 
 /**
@@ -906,8 +906,8 @@ func cdataText(raw as string) {
         if ($close < 0) {
             $out[] = $part;
         } else {
-            $out[] = strings.substring($part, 0, $close);
-            $out[] = plainText(strings.substring($part, $close + 3, len($part)));
+            $out[] = $part[..$close];
+            $out[] = plainText($part[$close + 3..len($part)]);
         }
     }
     return strings.join($out, "");
@@ -941,8 +941,8 @@ func textOnly(raw as string) {
     def rest as string init $raw;
     def open as int init strings.indexOf($rest, "<");
     while ($open >= 0) {
-        $out[] = strings.substring($rest, 0, $open);
-        $rest = strings.substring($rest, $open, len($rest));
+        $out[] = $rest[..$open];
+        $rest = $rest[$open..len($rest)];
         # A comment ends at -->, not at the first > inside it.
         def closer as string init ">";
         if (strings.startsWith($rest, "<!--")) {
@@ -952,7 +952,7 @@ func textOnly(raw as string) {
         if ($close < 0) {
             return strings.join($out, "");
         }
-        $rest = strings.substring($rest, $close + len($closer), len($rest));
+        $rest = $rest[$close + len($closer)..len($rest)];
         $open = strings.indexOf($rest, "<");
     }
     $out[] = $rest;
@@ -1241,8 +1241,8 @@ func escapeUnknownEntities(text as string) {
         if ($close < 0) {
             $out[] = $section;
         } else {
-            $out[] = strings.substring($section, 0, $close + 3);
-            $out[] = escapeAmpersands(strings.substring($section, $close + 3, len($section)));
+            $out[] = $section[..$close + 3];
+            $out[] = escapeAmpersands($section[$close + 3..len($section)]);
         }
     }
     return strings.join($out, "");
@@ -1260,7 +1260,7 @@ func escapeAmpersands(text as string) {
     for (def i as int init 1; $i < len($parts); $i = $i + 1) {
         def part as string init $parts[$i];
         def semi as int init strings.indexOf($part, ";");
-        if ($semi >= 0 and entityBody(strings.substring($part, 0, $semi)) != "") {
+        if ($semi >= 0 and entityBody($part[..$semi]) != "") {
             $out[] = "&" + $part;
         } else {
             $out[] = "&amp;" + $part;

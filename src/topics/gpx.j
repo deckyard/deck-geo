@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.26.0
+# pragma-jennifer-version: >=0.27.0
 
 # geo - GPX 1.0 and 1.1, the GPS exchange format.
 # Spliced into geo.j via include - not a standalone module.
@@ -32,7 +32,7 @@ export def const GPX_CREATOR as string init "@deckyard/geo";
  *   def doc as geo.Document init geo.readGpx(fs.readString("hike.gpx"));
  */
 export func readGpx(text as string) {
-    return readGpxSource(convert.bytesFromString("utf-8", $text), $text);
+    return readGpxSource(encoding.encode("utf-8", $text), $text);
 }
 
 /**
@@ -49,7 +49,7 @@ func readGpxBytes(src as bytes) {
     def text as string init "";
     def utf8 as bool init true;
     try {
-        $text = convert.stringFromBytes("utf-8", $src);
+        $text = encoding.decode("utf-8", $src);
     } catch (e) {
         $utf8 = false;
     }
@@ -105,7 +105,7 @@ func gpxTree(src as bytes, text as string) {
     def body as string init $text;
     # The scanner steps over a byte-order mark; xml.decode rejects one.
     if (strings.startsWith($body, "\uFEFF")) {
-        $body = strings.substring($body, 1, len($body));
+        $body = $body[1..len($body)];
     }
     if (not decodeFits($body, meta.BUILD)) {
         return $out;
@@ -768,7 +768,7 @@ func treeMatchesScan(src as bytes, text as string, root as xml.Value) {
 }
 
 /** A path that matches any element 102 levels deep, the root being level 1. */
-def const DEEP_PATH as string init strings.repeat("*/", MAX_NESTING) + "*";
+def const DEEP_PATH as string init strings.replicate("*/", MAX_NESTING) + "*";
 
 /**
  * The markup checks of {@link treeMatchesScan}: constructs the scanner reads
@@ -820,7 +820,7 @@ def const SCAN_DEPARTURES as list of string init [
 ];
 
 /** The end of a comment, as bytes. */
-def const COMMENT_END_PROBE as bytes init convert.bytesFromString("utf-8", "-->");
+def const COMMENT_END_PROBE as bytes init encoding.encode("utf-8", "-->");
 
 /**
  * Whether any comment holds `<![CDATA[`.
@@ -1091,5 +1091,5 @@ def const NEEDS_ESCAPE as string init '[&<>"\x27\x00-\x08\x0B-\x1F\x{FFFE}\x{FFF
  * @return {string} two spaces per level
  */
 func indent(depth as int) {
-    return strings.repeat("  ", $depth);
+    return strings.replicate("  ", $depth);
 }
