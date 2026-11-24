@@ -52,7 +52,7 @@ A string is already decoded, so `readText` and the `read*` functions take it
 as it is. A file is bytes, and `open` and the `open*` functions honour the XML
 declaration: a GPX, KML or GML file that declares `ISO-8859-1`,
 `windows-1252` or another single-byte encoding is transcoded to UTF-8 before
-it is read, as older Garmin and GIS exports need. UTF-16 raises, as does an
+it is read, as older Garmin™ and GIS exports need. UTF-16 raises, as does an
 encoding with no codec. A GeoJSON file is read as UTF-8, which RFC 7946
 requires.
 

@@ -3,7 +3,7 @@
 
 # KML and KMZ
 
-KML 2.2, the OGC standard that started as Google Earth's format, and KMZ, its
+KML 2.2, the OGC standard that started as Google Earth™'s format, and KMZ, its
 zipped form.
 
 ```jennifer

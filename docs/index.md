@@ -102,3 +102,13 @@ inflates past `MAX_KMZ_ENTRY_BYTES` (16 MiB), or an archive past
 
 Runnable programs:
 [`examples/`](https://github.com/deckyard/deck-geo/tree/main/examples).
+
+## Trademarks
+
+Google Earth™ and Google Maps™ are trademarks of Google LLC. Bing™ is a
+trademark of Microsoft Corporation. OpenStreetMap™ is a trademark of the
+OpenStreetMap Foundation. Garmin™ is a trademark of Garmin Ltd. or its
+subsidiaries. Other product and company names may be trademarks of their
+respective owners. They are used only to identify the products whose formats
+and tile schemes this deck works with. This deck is an independent project,
+not affiliated with, sponsored or endorsed by any of them.

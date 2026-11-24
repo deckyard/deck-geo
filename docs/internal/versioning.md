@@ -33,4 +33,4 @@ git push origin main 0.2.0
 ```
 
 `release.yml` runs the whole gate again, builds the archive with
-`tools/pack.sh`, and creates the GitHub release.
+`tools/pack.sh`, and creates the GitHub™ release.

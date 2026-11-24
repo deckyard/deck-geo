@@ -5,7 +5,7 @@
 
 Why the XML readers scan instead of parsing, and why the GPX reader now
 decodes first. The figures are from one host, reading a 10 MB GPX of 50,000
-track points, each with an elevation, a timestamp and a Garmin extensions
+track points, each with an elevation, a timestamp and a Garmin™ extensions
 block. The tables before [Measured again](#measured-again) are from the
 interpreter the scanner was designed on; that section has the current
 figures, which reverse the premise. [GPX: tree first](#gpx-tree-first) is the

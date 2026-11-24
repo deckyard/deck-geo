@@ -52,6 +52,16 @@ full API in the
 Runnable programs are in [`examples/`](examples). `tools/check-all.sh` runs the
 CI gate.
 
+## Trademarks
+
+Google Earth™ and Google Maps™ are trademarks of Google LLC. Bing™ is a
+trademark of Microsoft Corporation. OpenStreetMap™ is a trademark of the
+OpenStreetMap Foundation. Garmin™ is a trademark of Garmin Ltd. or its
+subsidiaries. Other product and company names may be trademarks of their
+respective owners. They are used only to identify the products whose formats
+and tile schemes this deck works with. This deck is an independent project,
+not affiliated with, sponsored or endorsed by any of them.
+
 ## Licence
 
 LGPL-3.0-only, see [LICENSE](LICENSE). Copyright (C) 2026 mplx &lt;mplx@jennifer-lang.dev&gt;.

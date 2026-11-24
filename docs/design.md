@@ -82,7 +82,7 @@ Deliberately out of scope:
   are longitude first; `coordinates` is always longitude first. The writer
   names `GML_CRS` (`urn:ogc:def:crs:EPSG::4326`, latitude first).
 - **KMZ entry choice.** `doc.kml` wins, then the first `.kml` at the root,
-  then the first anywhere, which matches what Google Earth reads when a KMZ
+  then the first anywhere, which matches what Google Earth™ reads when a KMZ
   carries a legend or an overlay besides.
 - **Geometry on the sphere.** `simplify` measures offsets on the sphere (unit
   vectors and chords to the arc); an earlier local plane mis-measured long

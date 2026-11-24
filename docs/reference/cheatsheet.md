@@ -213,7 +213,7 @@ One map tile.
 |---|---|---|
 | `tileOf(p, zoom)` | `Tile` | The tile a point falls in. |
 | `tileBounds(t)` | `Bounds` | The box a tile covers. |
-| `quadkey(t)` | `string` | A tile as a Bing Maps quadkey. |
+| `quadkey(t)` | `string` | A tile as a Bing™ Maps quadkey. |
 
 ## GPX
 

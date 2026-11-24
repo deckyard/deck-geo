@@ -60,7 +60,7 @@ def t as geo.Tile init geo.tileOf(geo.point(47.2692, 11.4041), 14);
 ```
 
 That is tile `14/8711/5744` in the Web Mercator (EPSG:3857) scheme that
-OpenStreetMap, Google Maps and other slippy maps share: at zoom `z` the world
+OpenStreetMap™, Google Maps™ and other slippy maps share: at zoom `z` the world
 is a grid of 2^z by 2^z tiles, `x` counting east from the antimeridian and `y`
 south from the top.
 
@@ -73,7 +73,7 @@ returns the latitude and longitude box a tile covers, and raises on an `x` or
 `y` outside the grid. A tile holds its west and north edges: `tileOf` of a
 box's north-west corner is the tile itself, of its south-west corner the tile
 below. `quadkey` writes the same address as the single string
-Bing Maps and some tile caches use, one digit per zoom level:
+Bing™ Maps and some tile caches use, one digit per zoom level:
 
 ```jennifer
 geo.quadkey(geo.Tile{x: 8711, y: 5744, z: 14});   # "12023002220111"
