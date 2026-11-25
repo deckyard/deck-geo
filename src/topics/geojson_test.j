@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.27.0
+# pragma-jennifer-version: >=0.28.0
 
 # geo - white-box tests for the geojson topic.
 # Spliced into geo_test.j via include - run with:
@@ -126,9 +126,9 @@ func growthRatio(reader as func, small as string, large as string) {
 func bestMillis(reader as func, text as string) {
     def best as int init -1;
     for (def i as int init 0; $i < 3; $i = $i + 1) {
-        def started as int init time.unixMillis(time.now());
+        def started as int init time.unixMilliseconds(time.now());
         $reader($text);
-        def took as int init time.unixMillis(time.now()) - $started;
+        def took as int init time.unixMilliseconds(time.now()) - $started;
         if ($best < 0 or $took < $best) {
             $best = $took;
         }

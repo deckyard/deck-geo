@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.27.0
+# pragma-jennifer-version: >=0.28.0
 
 # geo - white-box tests for the kml topic.
 # Spliced into geo_test.j via include - run with:
@@ -189,7 +189,7 @@ func testReadKmlRefusesALongBadTupleQuicklyWithAShortMessage() {
     # Building the token a character at a time was quadratic: 200,000 characters
     # took 13 s, and the message carried all of them. 2 s is 100 times the
     # linear cost; quoted() caps the echo at 48 characters plus its length.
-    def started as int init time.unixMillis(time.now());
+    def started as int init time.unixMilliseconds(time.now());
     def message as string init "";
     try {
         failOnALongTupleWithNoComma();
@@ -197,7 +197,7 @@ func testReadKmlRefusesALongBadTupleQuicklyWithAShortMessage() {
         testing.assertEqual($e.kind, ERROR_KIND);
         $message = $e.message;
     }
-    testing.assertTrue(time.unixMillis(time.now()) - $started < 2000);
+    testing.assertTrue(time.unixMilliseconds(time.now()) - $started < 2000);
     testing.assertContains($message, "has no comma");
     testing.assertContains($message, "(200000 characters)");
     testing.assertTrue(len($message) < 200);

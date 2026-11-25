@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 # SPDX-FileCopyrightText: Copyright (C) 2026 mplx <mplx@jennifer-lang.dev>
-# pragma-jennifer-version: >=0.27.0
+# pragma-jennifer-version: >=0.28.0
 
 # geo - the element scanner the XML codecs walk a document with.
 # Spliced into geo.j via include - not a standalone module.
@@ -1196,7 +1196,7 @@ func childText(src as bytes, nodes as list of Node, name as string) {
 func decodeLeaf(src as bytes, node as Node, ns as map of string to string) {
     def text as string init fragment($src, $node);
     try {
-        return xml.decode($text, $ns);
+        return xml.decodeWith($text, xml.DecodeOptions{namespaces: $ns});
     } catch (e) {
         # a decoder cap (nesting, nodes) is kind "limit": passed on unchanged;
         # anything else is an undeclared prefix, most likely, retried below
@@ -1208,7 +1208,9 @@ func decodeLeaf(src as bytes, node as Node, ns as map of string to string) {
     def tree as xml.Value init xml.element("empty");
     def repaired as string init escapeUnknownEntities($text);
     try {
-        $tree = xml.decode($repaired, withStandIns($repaired, $ns));
+        $tree = xml.decodeWith(
+            $repaired,
+            xml.DecodeOptions{namespaces: withStandIns($repaired, $ns)});
     } catch (e) {
         if ($e.kind == "limit") {
             throw $e;
@@ -1333,7 +1335,7 @@ func namespaceBindings(src as bytes, root as Node) {
     }
     def tag as xml.Value init xml.element("empty");
     try {
-        $tag = xml.decode($open, withStandIns($open, {}));
+        $tag = xml.decodeWith($open, xml.DecodeOptions{namespaces: withStandIns($open, {})});
     } catch (e) {
         return $out;
     }
